@@ -7,7 +7,7 @@
 class WindowsWindow
 {
 public:
-	WindowsWindow(const bool Init = true, const WindowProperties& inProperties = {});
+	WindowsWindow(const bool Init, const WindowProperties& inProperties);
 	~WindowsWindow();
 
 	void OnKeyInput(const EInputKey inKey, const EInputType inType);

@@ -3,9 +3,13 @@
 
 struct WindowProperties
 {
+	WindowProperties(const int32_t inWidth, const int32_t inHeight)
+		:Width(inWidth), Height(inHeight), AspectRatio(float(Width)/Height)
+	{}
+
 	eastl::string_view Title = "MainWindow";
-	uint32_t Width = 1920;
-	uint32_t Height = 1080;
-	float AspectRatio = 1920.f / 1080.f;
+	int32_t Width = 0;
+	int32_t Height = 0;
+	float AspectRatio = 0.f;
 	bool VSyncEnabled = false;
 };

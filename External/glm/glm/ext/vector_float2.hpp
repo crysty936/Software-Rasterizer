@@ -14,5 +14,7 @@ namespace glm
 	/// @see <a href="http://www.opengl.org/registry/doc/GLSLangSpec.4.20.8.pdf">GLSL 4.20.8 specification, section 4.1.5 Vectors</a>
 	typedef vec<2, float, defaultp>	vec2;
 
+	using vec2i = vec<2, int32_t, defaultp>;
+
 	/// @}
 }//namespace glm

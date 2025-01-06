@@ -20,11 +20,7 @@
 #include "Renderer/Model/3D/Assimp/AssimpModel3D.h"
 #include "Math/MathUtils.h"
 #include "glm/gtc/type_ptr.inl"
-
-
-#include <algorithm>
-#include <execution>
-#include <random>
+#include "SoftwareRasterizer.h"
 
 
 // Windows includes
@@ -105,35 +101,8 @@ const float CAMERA_FOV = 45.f;
 const float CAMERA_NEAR = 0.1f;
 const float CAMERA_FAR = 10000.f;
 
-glm::vec4* IntermediaryImageData = nullptr;
-uint32_t* FinalImageData = nullptr;
+SoftwareRasterizer Rasterizer;
 eastl::shared_ptr<D3D12Texture2D> MainImage = nullptr;
-
-static uint32_t ConvertToRGBA(const glm::vec4& color)
-{
-	uint8_t r = (uint8_t)(color.r * 255.0f);
-	uint8_t g = (uint8_t)(color.g * 255.0f);
-	uint8_t b = (uint8_t)(color.b * 255.0f);
-	uint8_t a = (uint8_t)(color.a * 255.0f);
-
-	uint32_t result = (a << 24) | (b << 16) | (g << 8) | r;
-	return result;
-}
-
-inline float random_float() {
-	static std::uniform_real_distribution<float> distribution(0.0, 1.0);
-	static std::mt19937 generator;
-	return distribution(generator);
-}
-
-inline float random_float(float min, float max) {
-	// Returns a random real in [min,max).
-	return min + (max - min) * random_float();
-}
-
-static glm::vec3 randomVec3() {
-	return glm::vec3(random_float(), random_float(), random_float());
-}
 
 void AppModeBase::CreateInitialResources()
 {
@@ -201,36 +170,14 @@ void AppModeBase::CreateInitialResources()
 
 
 	{
+		const int32_t imageWidth = 800;
+		const int32_t imageHeight = 600;
 
-		IntermediaryImageData = new glm::vec4[props.Width * props.Height];
-		FinalImageData = new uint32_t[props.Width * props.Height];
-
-		const glm::vec4 ColorRed = glm::vec4(1.f, 0.f, 0.f, 1.f);
-		const glm::vec4 ColorBlue = glm::vec4(0.f, 0.f, 1.f, 1.f);
-
-		for (uint32_t i = 0; i < props.Height; ++i)
-		{
-			const bool bIsRed = (i / 120) % 2 == 0;
-
-			for (uint32_t j = 0; j < props.Width; ++j)
-			{
-				glm::vec4& currentPixel = IntermediaryImageData[i * props.Width + j];
-				//glm::vec3 random = randomVec3();
-				//currentPixel.x = random.x;
-				//currentPixel.y = random.y;
-				//currentPixel.z = random.z;
-				//currentPixel.a = 1;
-				currentPixel = bIsRed ? ColorRed : ColorBlue;
-
-
-				FinalImageData[i * props.Width + j] = ConvertToRGBA(currentPixel);
-
-			}
-		}
-
-
-		MainImage = D3D12RHI::Get()->CreateAndLoadTexture2D("../Data/Textures/MinecraftGrass.jpg", /*inSRGB*/ false, true, m_commandList);
-		//MainImage = D3D12RHI::Get()->CreateTexture2DFromRawMemory(FinalImageData, props.Width, props.Height, /*inSRGB*/ false, m_commandList);
+		Rasterizer.Init(imageWidth, imageHeight);
+		const uint32_t* imageData = Rasterizer.GetImage();
+		//MainImage = D3D12RHI::Get()->CreateAndLoadTexture2D("../Data/Textures/MinecraftGrass.jpg", /*inSRGB*/ false, true, m_commandList);
+		//MainImage = D3D12RHI::Get()->CreateTexture2DFromRawMemory(imageData, props.Width, props.Height, /*inSRGB*/ false, m_commandList);
+		MainImage = D3D12RHI::Get()->CreateTexture2DFromRawMemory(imageData, imageWidth, imageHeight, /*inSRGB*/ false, m_commandList);
 	}
 
 

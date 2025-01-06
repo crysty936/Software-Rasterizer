@@ -53,7 +53,7 @@ void AppCore::Init()
 	InputSystem::Init();
 
 	// Create Main Window
-	GEngine->MainWindow = eastl::make_unique<WindowsWindow>();
+	GEngine->MainWindow = eastl::make_unique<WindowsWindow>(true, WindowProperties(1920, 1080));
 
 	SceneManager::Init();
 
