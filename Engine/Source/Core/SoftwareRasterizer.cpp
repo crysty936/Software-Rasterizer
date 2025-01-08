@@ -108,16 +108,18 @@ void SoftwareRasterizer::TransposeImage()
 
 void SoftwareRasterizer::DrawModelWireframe(const eastl::shared_ptr<Model3D>& inModel)
 {
-	static int32_t maxCount = 8;
+	static int32_t maxLines = 128;
+	static int32_t maxTriangles = 32;
 
 	{
 		ImGui::Begin("Software Rasterizer");
-		ImGui::SliderInt("Vertices to draw", &maxCount, 0, 10);
+		ImGui::SliderInt("Lines to draw", &maxLines, 0, 128);
+		ImGui::SliderInt("Triangles to draw", &maxTriangles, 0, 32);
 		ImGui::End();
 	}
 
-	int32_t count = 0;
-
+	int32_t countLines = 0;
+	int32_t countTriangles = 0;
 
 	const eastl::vector<TransformObjPtr>& modelChildren = inModel->GetChildren();
 	for (uint32_t i = 0; i < modelChildren.size(); ++i)
@@ -136,10 +138,15 @@ void SoftwareRasterizer::DrawModelWireframe(const eastl::shared_ptr<Model3D>& in
 			// Draw triangle by triangle
 			for (uint32_t triangleIdx = 0; triangleIdx < numTriangles; ++triangleIdx)
 			{
+				if (countTriangles >= maxTriangles)
+				{
+					return;
+				}
+
 				const uint32_t idxStart = triangleIdx * 3;
 				for (uint32_t j = 0; j < 3; ++j)
 				{
-					if (count >= maxCount)
+					if (countLines >= maxLines)
 					{
 						return;
 					}
@@ -154,13 +161,14 @@ void SoftwareRasterizer::DrawModelWireframe(const eastl::shared_ptr<Model3D>& in
 					currVertex = (currVertex + 1.f) / 2.f;
 					nextVertex = (nextVertex + 1.f) / 2.f;
 
-					const glm::vec2i start(currVertex.x * (ImageWidth / 2.f), currVertex.y * (ImageHeight / 2.f));
-					const glm::vec2i end(nextVertex.x * (ImageWidth / 2.f), nextVertex.y * (ImageHeight / 2.f));
+					const glm::vec2i start(currVertex.x * (ImageWidth - 1), currVertex.y * (ImageHeight - 1));
+					const glm::vec2i end(nextVertex.x * (ImageWidth - 1), nextVertex.y * (ImageHeight - 1));
 
 					DrawLine(start, end);
-					++count;
+					++countLines;
 				}
 
+				++countTriangles;
 			}
 		}
 

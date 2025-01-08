@@ -195,8 +195,8 @@ void AppModeBase::CreateInitialResources()
 
 	// Models
 
-	//MainModel = eastl::make_shared<CubeShape>("TheCube");
-	MainModel = eastl::make_shared<SquareShape>("TheSquare");
+	MainModel = eastl::make_shared<CubeShape>("TheCube");
+	//MainModel = eastl::make_shared<SquareShape>("TheSquare");
 	MainModel->Init(m_commandList);
 
 	currentScene.AddObject(MainModel);

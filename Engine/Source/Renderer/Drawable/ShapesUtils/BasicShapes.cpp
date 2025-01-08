@@ -33,7 +33,7 @@ void CubeShape::Init(ID3D12GraphicsCommandList* inCommandList)
 		const int32_t nrVertices = nrFloats / nrFloatsInVertex;
 
 		cubeNode->CPUVertices.resize(nrVertices);
-		memcpy(&cubeNode->CPUVertices[0], BasicShapesData::GetCubeVertices(), BasicShapesData::GetCubeVerticesCount());
+		memcpy(&cubeNode->CPUVertices[0], BasicShapesData::GetCubeVertices(), BasicShapesData::GetCubeVerticesCount() * sizeof(float));
 
 	}
 
