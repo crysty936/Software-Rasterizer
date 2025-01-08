@@ -104,7 +104,7 @@ const float CAMERA_FAR = 10000.f;
 const int32_t SoftRasterizerImgWidth = 800;
 const int32_t SoftRasterizerImgHeight = 600;
 SoftwareRasterizer Rasterizer;
-eastl::shared_ptr<D3D12Texture2D> MainImage[2] = { nullptr, nullptr };
+eastl::shared_ptr<D3D12Texture2DWritable> MainImage;
 
 void AppModeBase::CreateInitialResources()
 {
@@ -173,11 +173,7 @@ void AppModeBase::CreateInitialResources()
 
 	{
 		Rasterizer.Init(SoftRasterizerImgWidth, SoftRasterizerImgHeight);
-		const uint32_t* imageData = Rasterizer.GetImage();
-		//MainImage = D3D12RHI::Get()->CreateAndLoadTexture2D("../Data/Textures/MinecraftGrass.jpg", /*inSRGB*/ false, true, m_commandList);
-		//MainImage = D3D12RHI::Get()->CreateTexture2DFromRawMemory(imageData, props.Width, props.Height, /*inSRGB*/ false, m_commandList);
-		MainImage[0] = D3D12RHI::Get()->CreateTexture2DFromRawMemory(imageData, SoftRasterizerImgWidth, SoftRasterizerImgHeight, /*inSRGB*/ false, m_commandList);
-		MainImage[1] = D3D12RHI::Get()->CreateTexture2DFromRawMemory(imageData, SoftRasterizerImgWidth, SoftRasterizerImgHeight, /*inSRGB*/ false, m_commandList);
+		MainImage = eastl::make_shared<D3D12Texture2DWritable>(SoftRasterizerImgWidth, SoftRasterizerImgHeight, /*inSRGB*/ false, m_commandList);
 	}
 
 
@@ -415,14 +411,9 @@ void AppModeBase::BeginFrame()
 
 
 {
-	//D3D12Utility::TransitionResource(m_commandList, MainImage->Resource, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON);
-
 	Rasterizer.ClearImage();
 	uint32_t* imageData = Rasterizer.GetImage();
-	D3D12RHI::Get()->UpdateTexture2DFromRawMemory(MainImage[D3D12Utility::CurrentFrameIndex % D3D12Utility::NumFramesInFlight], imageData, SoftRasterizerImgWidth, SoftRasterizerImgHeight, m_commandList);
-
-	//D3D12Utility::TransitionResource(m_commandList, MainImage->Resource, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-
+	D3D12RHI::Get()->UpdateTexture2D(MainImage->GetCurrentImage(), imageData, SoftRasterizerImgWidth, SoftRasterizerImgHeight, m_commandList);
 }
 
 
@@ -467,7 +458,7 @@ void AppModeBase::RenderTexture()
 
 	m_commandList->OMSetRenderTargets(1, renderTargets, false, nullptr);
 
-	m_commandList->SetGraphicsRootDescriptorTable(0, D3D12Globals::GlobalSRVHeap.GetGPUHandle(MainImage[D3D12Utility::CurrentFrameIndex % D3D12Utility::NumFramesInFlight]->SRVIndex, D3D12Utility::CurrentFrameIndex));
+	m_commandList->SetGraphicsRootDescriptorTable(0, D3D12Globals::GlobalSRVHeap.GetGPUHandle(MainImage->GetCurrentImage()->SRVIndex, D3D12Utility::CurrentFrameIndex));
 
 	m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
@@ -482,9 +473,9 @@ void AppModeBase::Draw()
 	D3D12Utility::TransitionResource(m_commandList, m_BackBuffers[D3D12Utility::CurrentFrameIndex], D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 	{
-		D3D12Utility::TransitionResource(m_commandList, MainImage[D3D12Utility::CurrentFrameIndex % D3D12Utility::NumFramesInFlight]->Resource, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+		D3D12Utility::TransitionResource(m_commandList, MainImage->GetCurrentImage()->Resource, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 		RenderTexture();
-		D3D12Utility::TransitionResource(m_commandList, MainImage[D3D12Utility::CurrentFrameIndex % D3D12Utility::NumFramesInFlight]->Resource, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON);
+		D3D12Utility::TransitionResource(m_commandList, MainImage->GetCurrentImage()->Resource, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON);
 	}
 
 
