@@ -122,6 +122,12 @@ void SoftwareRasterizer::DrawModelWireframe(const eastl::shared_ptr<Model3D>& in
 	int32_t countTriangles = 0;
 
 	const eastl::vector<TransformObjPtr>& modelChildren = inModel->GetChildren();
+	const Transform& modelTrans = inModel->GetAbsoluteTransform();
+	const glm::mat4 absoluteMat = modelTrans.GetMatrix();
+	const glm::mat4 projection = glm::orthoLH_ZO(-20.f, 20.f, -20.f, 20.f, 0.f, 20.f);
+
+
+
 	for (uint32_t i = 0; i < modelChildren.size(); ++i)
 	{
 		const TransformObjPtr& currChild = modelChildren[i];
@@ -157,6 +163,17 @@ void SoftwareRasterizer::DrawModelWireframe(const eastl::shared_ptr<Model3D>& in
 					glm::vec3 currVertex = CPUVertices[currIndex].Position;
 					glm::vec3 nextVertex = CPUVertices[nextIndex].Position;
 
+					glm::vec4 currTransformedVertex = absoluteMat * glm::vec4(currVertex.x, currVertex.y, currVertex.z, 1.f);
+					currTransformedVertex = currTransformedVertex * projection;
+					currTransformedVertex /= currTransformedVertex.w;
+
+					glm::vec4 nextTransformedVertex = absoluteMat * glm::vec4(nextVertex.x, nextVertex.y, nextVertex.z, 1.f);
+					nextTransformedVertex = nextTransformedVertex * projection;
+					nextTransformedVertex /= nextTransformedVertex.w;
+					
+					currVertex = glm::vec3(currTransformedVertex);
+					nextVertex = glm::vec3(nextTransformedVertex);
+
 					// Re-map to 0..1
 					currVertex = (currVertex + 1.f) / 2.f;
 					nextVertex = (nextVertex + 1.f) / 2.f;
@@ -181,7 +198,11 @@ void SoftwareRasterizer::DrawLine(const glm::vec2i& inStart, const glm::vec2i& i
 	const int32_t dx = glm::abs(inEnd.x - inStart.x);
 	const int32_t dy = glm::abs(inEnd.y - inStart.y);
 
-	ASSERT(dx < ImageWidth && dy < ImageHeight);
+	if (dx < 0 || dx >= ImageWidth || dy < 0 || dy >= ImageHeight)
+	{
+		return;
+	}
+	//ASSERT(dx < ImageWidth && dy < ImageHeight);
 
 	const int32_t nrSteps = dx > dy ? dx : dy;
 
