@@ -198,10 +198,10 @@ void AppModeBase::CreateInitialResources()
 
 	// Models
 
-	//eastl::shared_ptr<Model3D> TheCube = eastl::make_shared<CubeShape>("TheCube");
-	//TheCube->Init(m_commandList);
+	eastl::shared_ptr<Model3D> TheCube = eastl::make_shared<CubeShape>("TheCube");
+	TheCube->Init(m_commandList);
 
-	//currentScene.AddObject(TheCube);
+	currentScene.AddObject(TheCube);
 
 	//eastl::shared_ptr<AssimpModel3D> model= eastl::make_shared<AssimpModel3D>("../Data/Models/Sponza/Sponza.gltf", "Sponza");
 	//model->Rotate(90.f, glm::vec3(0.f, 1.f, 0.f));
