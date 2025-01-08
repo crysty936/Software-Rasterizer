@@ -39,7 +39,7 @@ void SoftwareRasterizer::Init(const int32_t inImageWidth, const int32_t inImageH
 
 	IntermediaryImageData = new glm::vec4[inImageWidth * inImageHeight];
 	FinalImageData = new uint32_t[inImageWidth * inImageHeight];
-	memset(FinalImageData, 0, inImageWidth * inImageHeight * 4);
+	ClearImage();
 }
 
 SoftwareRasterizer::~SoftwareRasterizer()
@@ -89,7 +89,8 @@ void SoftwareRasterizer::TransposeImage()
 //		if (slopeErrorY > 0.5f)
 //		{
 //			++y;
-//			slopeErrorY -= 1.f;
+//			slopeErrorY -= 1.f; // Normally, we would increase the stepped over pixel by 1
+//								// and compare with the next one but instead of that, we can decrease this by 1
 //		}
 //
 //		if (slopeErrorX > 0.5f)
@@ -145,78 +146,51 @@ void SoftwareRasterizer::DrawLine(const glm::vec2i& inStart, const glm::vec2i& i
 
 uint32_t* SoftwareRasterizer::GetImage()
 {
-	// Debug checkerboard
-	//const glm::vec4 ColorRed = glm::vec4(1.f, 0.f, 0.f, 1.f);
-	//const glm::vec4 ColorBlue = glm::vec4(0.f, 0.f, 1.f, 1.f);
-
-	//const float stepSize = float(ImageHeight)/5;
-	//for (uint32_t i = 0; i < ImageHeight; ++i)
-	//{
-	//	//const bool bIsRed = (i / int32_t(stepSize)) % 2 == 0;
-
-	//	for (uint32_t j = 0; j < ImageWidth; ++j)
-	//	{
-	//		const bool bIsRed = (i+j) % 2 == 0;
-
-	//		//const bool bIsRed = i < 200 && j < 200;
-	//		glm::vec4& currentPixel = IntermediaryImageData[i * ImageWidth+ j];
-	//		//glm::vec3 random = randomVec3();
-	//		//currentPixel.x = random.x;
-	//		//currentPixel.y = random.y;
-	//		//currentPixel.z = random.z;
-	//		//currentPixel.a = 1;
-	//		currentPixel = bIsRed ? ColorRed : ColorBlue;
-
-
-	//		FinalImageData[i * ImageWidth + j] = ConvertToRGBA(currentPixel);
-	//	}
-	//}
-
-	// w = 20, h = 10
-
-// Debug square
-//for (int32_t i = start.y; i <= end.y; ++i)
-//{
-//	for (int32_t j = start.x; j <= end.x; ++j)
-//	{
-//		FinalImageData[i * ImageWidth + j] = 0xFFFFFFFF;
-//	}
-//}
-
-	//{
-	//	//const glm::vec2i start(15, 10);
-	//	//const glm::vec2i end(9, 0);
-
-	//	const glm::vec2i start(15, 0);
-	//	const glm::vec2i end(9, 9);
-
-	//	DrawLine(start, end, glm::vec4(0.f, 1.f, 0.f, 1.f));
-	//}
-
-	//{
-	//	const glm::vec2i start(9, 0);
-	//	const glm::vec2i end(7, 9);
-
-	//	DrawLine(start, end, glm::vec4(1.f, 1.f, 1.f, 1.f));
-	//}
-
 	//{
 	//	const glm::vec2i start(0, 5);
-	//	const glm::vec2i end(19,5);
+	//	const glm::vec2i end(400,500);
 
 	//	DrawLine(start, end, glm::vec4(1.f, 1.f, 1.f, 1.f));
 	//}
 
+	ClearImage();
 
+
+		// Debug checkerboard
+	const glm::vec4 ColorRed = glm::vec4(1.f, 0.f, 0.f, 1.f);
+	const glm::vec4 ColorBlue = glm::vec4(0.f, 0.f, 1.f, 1.f);
+
+	const float stepSize = float(ImageHeight)/5;
+	for (uint32_t i = 0; i < ImageHeight; ++i)
 	{
-		const glm::vec2i start(0, 5);
-		const glm::vec2i end(400,500);
+		//const bool bIsRed = (i / int32_t(stepSize)) % 2 == 0;
 
-		DrawLine(start, end, glm::vec4(1.f, 1.f, 1.f, 1.f));
+		for (uint32_t j = 0; j < ImageWidth; ++j)
+		{
+			//const bool bIsRed = (i+j) % 2 == 0;
+
+			//const bool bIsRed = i < 200 && j < 200;
+			glm::vec4& currentPixel = IntermediaryImageData[i * ImageWidth+ j];
+			glm::vec3 random = randomVec3();
+			currentPixel.x = random.x;
+			currentPixel.y = random.y;
+			currentPixel.z = random.z;
+			currentPixel.a = 1;
+			//currentPixel = bIsRed ? ColorRed : ColorBlue;
+
+
+			FinalImageData[i * ImageWidth + j] = ConvertToRGBA(currentPixel);
+		}
 	}
+
 
 	// y goes down in D3D
 	TransposeImage();
 
 	return FinalImageData;
+}
+
+void SoftwareRasterizer::ClearImage()
+{
+	memset(FinalImageData, 0, ImageWidth * ImageHeight * 4);
 }

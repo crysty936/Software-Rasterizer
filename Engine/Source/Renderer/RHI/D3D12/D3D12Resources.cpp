@@ -364,6 +364,29 @@ inline uint64_t GetRequiredIntermediateSize(
 	return RequiredSize;
 }
 
+void D3D12RHI::UpdateTexture2DFromRawMemory(eastl::shared_ptr<D3D12Texture2D>& inTexture, const uint32_t* inData, const uint32_t inWidth, const uint32_t inHeight, ID3D12GraphicsCommandList* inCommandList)
+{
+	ID3D12Resource* texResource = inTexture->Resource;
+	const D3D12_RESOURCE_DESC textureDesc = texResource->GetDesc();
+	ASSERT(textureDesc.Width == inWidth && textureDesc.Height == inHeight);
+
+	//D3D12Utility::TransitionResource(inCommandList, texResource, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
+	//D3D12Utility::TransitionResource(inCommandList, texResource, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
+
+	// Get required size by device
+	UINT64 uploadBufferSize = 0;
+	D3D12Globals::Device->GetCopyableFootprints(&textureDesc, 0, 1, 0, nullptr, nullptr, nullptr, &uploadBufferSize);
+
+	UploadContext& uploadcontext = D3D12Upload::ResourceUploadBegin(uploadBufferSize);
+
+	UploadTextureRaw(texResource, inData, uploadcontext, textureDesc.Width, textureDesc.Height);
+
+	D3D12Upload::ResourceUploadEnd(uploadcontext);
+
+
+	//D3D12Utility::TransitionResource(inCommandList, texResource, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	//D3D12Utility::TransitionResource(inCommandList, texResource, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COMMON);
+}
 
 eastl::shared_ptr<D3D12Texture2D> D3D12RHI::CreateTexture2DFromRawMemory(const uint32_t* inData, const uint32_t inWidth, const uint32_t inHeight, const bool inSRGB, ID3D12GraphicsCommandList* inCommandList)
 {
@@ -377,6 +400,7 @@ eastl::shared_ptr<D3D12Texture2D> D3D12RHI::CreateTexture2DFromRawMemory(const u
 	textureDesc.Format = inSRGB ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
 	textureDesc.Width = inWidth;
 	textureDesc.Height = inHeight;
+	//textureDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS; // This can be used to remove compression so textures can be used across queues without being transitioned to COMMON state
 	textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
 	textureDesc.DepthOrArraySize = 1;
 	textureDesc.SampleDesc.Count = 1;
@@ -419,11 +443,14 @@ eastl::shared_ptr<D3D12Texture2D> D3D12RHI::CreateTexture2DFromRawMemory(const u
 	// Add buffer regions commands to Cmdlist
 	UploadTextureRaw(texResource, inData, uploadcontext, inWidth, inHeight);
 
+
+	D3D12Utility::TransitionResource(uploadcontext.CmdList, texResource, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COMMON);
+
 	// Submit commands
 	D3D12Upload::ResourceUploadEnd(uploadcontext);
 
 	// Transition from copy dest to shader resource
-	D3D12Utility::TransitionResource(inCommandList, texResource, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	//D3D12Utility::TransitionResource(inCommandList, texResource, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
 	newTexture->NumMips = 1u;
 	newTexture->ChannelsType = ERHITextureChannelsType::RGBA;

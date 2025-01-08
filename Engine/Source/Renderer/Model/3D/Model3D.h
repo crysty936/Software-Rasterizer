@@ -20,8 +20,11 @@ struct MeshNode : public DrawableObject
 
 	eastl::shared_ptr<D3D12VertexBuffer> VertexBuffer;
 	eastl::shared_ptr<D3D12IndexBuffer> IndexBuffer;
-	//eastl::vector<eastl::shared_ptr<D3D12Texture2D>> Textures;
+
 	uint32_t MatIndex = uint32_t(-1);
+
+	eastl::vector<uint32_t> CPUIndices;
+	eastl::vector<glm::vec3> CPUVertices;
 };
 
 class Model3D : public TransformObject

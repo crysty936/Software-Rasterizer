@@ -13,6 +13,7 @@ public:
 	void DrawLine(const glm::vec2i& inStart, const glm::vec2i& inEnd, const glm::vec4& inColor = glm::vec4(1.f, 1.f, 1.f, 1.f));
 	void bresenhamFull(int x1, int y1, int x2, int y2);
 	uint32_t* GetImage();
+	inline void ClearImage();
 
 private:
 	uint32_t* FinalImageData = nullptr;

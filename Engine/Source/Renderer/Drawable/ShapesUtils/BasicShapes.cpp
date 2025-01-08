@@ -15,6 +15,8 @@ void CubeShape::Init(ID3D12GraphicsCommandList* inCommandList)
 
 	cubeNode->IndexBuffer = D3D12RHI::Get()->CreateIndexBuffer(BasicShapesData::GetCubeIndices(), BasicShapesData::GetCubeIndicesCount());
 
+	cubeNode->CPUIndices = eastl::vector<uint32_t>(BasicShapesData::GetCubeIndices(), BasicShapesData::GetCubeIndices() + BasicShapesData::GetCubeIndicesCount());
+
 	// Create the vertex buffer.
 	{
 		VertexInputLayout vbLayout;
@@ -25,6 +27,10 @@ void CubeShape::Init(ID3D12GraphicsCommandList* inCommandList)
 		vbLayout.Push<float>(2, VertexInputType::TexCoords);
 
 		cubeNode->VertexBuffer = D3D12RHI::Get()->CreateVertexBuffer(vbLayout, BasicShapesData::GetCubeVertices(), BasicShapesData::GetCubeVerticesCount(), cubeNode->IndexBuffer);
+		//cubeNode->CPUVertices = eastl::vector<glm::vec3>(BasicShapesData::GetCubeVertices(), BasicShapesData::GetCubeVertices() + BasicShapesData::GetCubeVerticesCount());
+		cubeNode->CPUVertices.resize(BasicShapesData::GetCubeVerticesCount());
+		memcpy(&cubeNode->CPUVertices[0], BasicShapesData::GetCubeVertices(), BasicShapesData::GetCubeVerticesCount());
+
 	}
 
 	eastl::shared_ptr<D3D12Texture2D> newTex = D3D12RHI::Get()->CreateAndLoadTexture2D("../Data/Textures/MinecraftGrass.jpg", /*inSRGB*/ true, true, inCommandList);
