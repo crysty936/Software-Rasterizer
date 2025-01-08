@@ -5,6 +5,9 @@
 #include <algorithm>
 #include <execution>
 #include <random>
+#include "Entity/TransformObject.h"
+#include "Renderer/Model/3D/Model3D.h"
+#include "imgui.h"
 
 static uint32_t ConvertToRGBA(const glm::vec4& color)
 {
@@ -103,6 +106,68 @@ void SoftwareRasterizer::TransposeImage()
 //}
 
 
+void SoftwareRasterizer::DrawModelWireframe(const eastl::shared_ptr<Model3D>& inModel)
+{
+	static int32_t maxCount = 8;
+
+	{
+		ImGui::Begin("Software Rasterizer");
+		ImGui::SliderInt("Vertices to draw", &maxCount, 0, 10);
+		ImGui::End();
+	}
+
+	int32_t count = 0;
+
+
+	const eastl::vector<TransformObjPtr>& modelChildren = inModel->GetChildren();
+	for (uint32_t i = 0; i < modelChildren.size(); ++i)
+	{
+		const TransformObjPtr& currChild = modelChildren[i];
+		eastl::shared_ptr<MeshNode> node = eastl::dynamic_shared_pointer_cast<MeshNode>(currChild);
+		if (node)
+		{
+			const eastl::vector<SimpleVertex> CPUVertices = node->CPUVertices;
+			const eastl::vector<uint32_t> CPUIndices = node->CPUIndices;
+
+			const uint32_t numIndices = CPUIndices.size();
+			ASSERT(numIndices % 3 == 0);
+			const uint32_t numTriangles = numIndices / 3;
+
+			// Draw triangle by triangle
+			for (uint32_t triangleIdx = 0; triangleIdx < numTriangles; ++triangleIdx)
+			{
+				const uint32_t idxStart = triangleIdx * 3;
+				for (uint32_t j = 0; j < 3; ++j)
+				{
+					if (count >= maxCount)
+					{
+						return;
+					}
+					const uint32_t currIndex = CPUIndices[idxStart + j];
+					const uint32_t nextIndexIndex = j == 2 ? idxStart : (idxStart + j + 1);
+					const uint32_t nextIndex = CPUIndices[nextIndexIndex];
+
+					glm::vec3 currVertex = CPUVertices[currIndex].Position;
+					glm::vec3 nextVertex = CPUVertices[nextIndex].Position;
+
+					// Re-map to 0..1
+					currVertex = (currVertex + 1.f) / 2.f;
+					nextVertex = (nextVertex + 1.f) / 2.f;
+
+					const glm::vec2i start(currVertex.x * (ImageWidth / 2.f), currVertex.y * (ImageHeight / 2.f));
+					const glm::vec2i end(nextVertex.x * (ImageWidth / 2.f), nextVertex.y * (ImageHeight / 2.f));
+
+					DrawLine(start, end);
+					++count;
+				}
+
+			}
+		}
+
+	}
+
+}
+
 void SoftwareRasterizer::DrawLine(const glm::vec2i& inStart, const glm::vec2i& inEnd, const glm::vec4& inColor)
 {
 	const int32_t dx = glm::abs(inEnd.x - inStart.x);
@@ -144,23 +209,12 @@ void SoftwareRasterizer::DrawLine(const glm::vec2i& inStart, const glm::vec2i& i
 	}
 }
 
-uint32_t* SoftwareRasterizer::GetImage()
+void SoftwareRasterizer::DrawRandom()
 {
-	//{
-	//	const glm::vec2i start(0, 5);
-	//	const glm::vec2i end(400,500);
-
-	//	DrawLine(start, end, glm::vec4(1.f, 1.f, 1.f, 1.f));
-	//}
-
-	ClearImage();
-
-
-		// Debug checkerboard
 	const glm::vec4 ColorRed = glm::vec4(1.f, 0.f, 0.f, 1.f);
 	const glm::vec4 ColorBlue = glm::vec4(0.f, 0.f, 1.f, 1.f);
 
-	const float stepSize = float(ImageHeight)/5;
+	const float stepSize = float(ImageHeight) / 5;
 	for (uint32_t i = 0; i < ImageHeight; ++i)
 	{
 		//const bool bIsRed = (i / int32_t(stepSize)) % 2 == 0;
@@ -170,7 +224,7 @@ uint32_t* SoftwareRasterizer::GetImage()
 			//const bool bIsRed = (i+j) % 2 == 0;
 
 			//const bool bIsRed = i < 200 && j < 200;
-			glm::vec4& currentPixel = IntermediaryImageData[i * ImageWidth+ j];
+			glm::vec4& currentPixel = IntermediaryImageData[i * ImageWidth + j];
 			glm::vec3 random = randomVec3();
 			currentPixel.x = random.x;
 			currentPixel.y = random.y;
@@ -182,12 +236,24 @@ uint32_t* SoftwareRasterizer::GetImage()
 			FinalImageData[i * ImageWidth + j] = ConvertToRGBA(currentPixel);
 		}
 	}
+}
 
+uint32_t* SoftwareRasterizer::GetImage()
+{
+	//{
+	//	const glm::vec2i start(0, 5);
+	//	const glm::vec2i end(400,500);
 
-	// y goes down in D3D
-	TransposeImage();
+	//	DrawLine(start, end, glm::vec4(1.f, 1.f, 1.f, 1.f));
+	//}
 
 	return FinalImageData;
+}
+
+void SoftwareRasterizer::PrepareBeforePresent()
+{
+	// y goes down in D3D
+	TransposeImage();
 }
 
 void SoftwareRasterizer::ClearImage()

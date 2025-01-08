@@ -341,6 +341,8 @@ namespace D3D12Upload
 			return newContext;
 		}
 
+		// This executes the command list right away so copies get started as soon as possible
+		// 
 		uint64_t End(UploadContext& inContext)
 		{
 			ASSERT(inContext.SubmissionIndex != uint64_t(-1));

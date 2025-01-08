@@ -23,8 +23,8 @@ struct MeshNode : public DrawableObject
 
 	uint32_t MatIndex = uint32_t(-1);
 
+	eastl::vector<SimpleVertex> CPUVertices;
 	eastl::vector<uint32_t> CPUIndices;
-	eastl::vector<glm::vec3> CPUVertices;
 };
 
 class Model3D : public TransformObject

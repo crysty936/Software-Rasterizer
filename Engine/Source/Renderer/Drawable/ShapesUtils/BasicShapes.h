@@ -22,6 +22,17 @@ public:
 
 };
 
+class SquareShape : public Model3D
+{
+public:
+	SquareShape(const eastl::string& inName);
+	virtual ~SquareShape();
+
+	void Init(ID3D12GraphicsCommandList* inCommandList) override;
+
+};
+
+
 #if 0
 
 

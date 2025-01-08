@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include "glm/glm.hpp"
 #include "glm/ext/vector_float2.hpp"
+#include "EASTL/shared_ptr.h"
 
 class SoftwareRasterizer
 {
@@ -10,9 +11,12 @@ public:
 	void Init(const int32_t inImageWidth, const int32_t inImageHeight);
 	~SoftwareRasterizer();
 	void TransposeImage();
+	void DrawModelWireframe(const eastl::shared_ptr<class Model3D>& inModel);
 	void DrawLine(const glm::vec2i& inStart, const glm::vec2i& inEnd, const glm::vec4& inColor = glm::vec4(1.f, 1.f, 1.f, 1.f));
+	void DrawRandom();
 	void bresenhamFull(int x1, int y1, int x2, int y2);
 	uint32_t* GetImage();
+	void PrepareBeforePresent();
 	inline void ClearImage();
 
 private:

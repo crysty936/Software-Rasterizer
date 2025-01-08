@@ -101,10 +101,11 @@ const float CAMERA_FOV = 45.f;
 const float CAMERA_NEAR = 0.1f;
 const float CAMERA_FAR = 10000.f;
 
-const int32_t SoftRasterizerImgWidth = 800;
-const int32_t SoftRasterizerImgHeight = 600;
+const int32_t SoftRasterizerImgWidth = 80;
+const int32_t SoftRasterizerImgHeight = 60;
 SoftwareRasterizer Rasterizer;
 eastl::shared_ptr<D3D12Texture2DWritable> MainImage;
+eastl::shared_ptr<Model3D> MainModel;
 
 void AppModeBase::CreateInitialResources()
 {
@@ -194,10 +195,11 @@ void AppModeBase::CreateInitialResources()
 
 	// Models
 
-	eastl::shared_ptr<Model3D> TheCube = eastl::make_shared<CubeShape>("TheCube");
-	TheCube->Init(m_commandList);
+	//MainModel = eastl::make_shared<CubeShape>("TheCube");
+	MainModel = eastl::make_shared<SquareShape>("TheSquare");
+	MainModel->Init(m_commandList);
 
-	currentScene.AddObject(TheCube);
+	currentScene.AddObject(MainModel);
 
 	//eastl::shared_ptr<AssimpModel3D> model= eastl::make_shared<AssimpModel3D>("../Data/Models/Sponza/Sponza.gltf", "Sponza");
 	//model->Rotate(90.f, glm::vec3(0.f, 1.f, 0.f));
@@ -412,6 +414,10 @@ void AppModeBase::BeginFrame()
 
 {
 	Rasterizer.ClearImage();
+	//Rasterizer.DrawRandom();
+	Rasterizer.DrawModelWireframe(MainModel);
+	//Rasterizer.DrawLine(glm::vec2(40, 30), glm::vec2(0, 30));
+	Rasterizer.PrepareBeforePresent();
 	uint32_t* imageData = Rasterizer.GetImage();
 	D3D12RHI::Get()->UpdateTexture2D(MainImage->GetCurrentImage(), imageData, SoftRasterizerImgWidth, SoftRasterizerImgHeight, m_commandList);
 }
@@ -506,10 +512,9 @@ void AppModeBase::EndFrame()
 
 	ImGuiRenderDrawData();
 
-	SwapBuffers();
-
 	D3D12RHI::Get()->EndFrame();
 
+	SwapBuffers();
 }
 
 

@@ -170,6 +170,7 @@ void D3D12RHI::InitPipeline()
 	queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 
 	DXAssert(D3D12Globals::Device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&D3D12Globals::GraphicsCommandQueue)));
+	D3D12Globals::GraphicsCommandQueue->SetName(L"Graphics Command Queue");
 
 	const WindowsWindow& mainWindow = GEngine->GetMainWindow();
 	const WindowProperties& props = mainWindow.GetProperties();

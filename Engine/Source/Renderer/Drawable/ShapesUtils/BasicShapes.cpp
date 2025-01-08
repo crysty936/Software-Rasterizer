@@ -14,7 +14,6 @@ void CubeShape::Init(ID3D12GraphicsCommandList* inCommandList)
 	eastl::shared_ptr<MeshNode> cubeNode = eastl::make_shared<MeshNode>("Cube Mesh");
 
 	cubeNode->IndexBuffer = D3D12RHI::Get()->CreateIndexBuffer(BasicShapesData::GetCubeIndices(), BasicShapesData::GetCubeIndicesCount());
-
 	cubeNode->CPUIndices = eastl::vector<uint32_t>(BasicShapesData::GetCubeIndices(), BasicShapesData::GetCubeIndices() + BasicShapesData::GetCubeIndicesCount());
 
 	// Create the vertex buffer.
@@ -27,8 +26,13 @@ void CubeShape::Init(ID3D12GraphicsCommandList* inCommandList)
 		vbLayout.Push<float>(2, VertexInputType::TexCoords);
 
 		cubeNode->VertexBuffer = D3D12RHI::Get()->CreateVertexBuffer(vbLayout, BasicShapesData::GetCubeVertices(), BasicShapesData::GetCubeVerticesCount(), cubeNode->IndexBuffer);
-		//cubeNode->CPUVertices = eastl::vector<glm::vec3>(BasicShapesData::GetCubeVertices(), BasicShapesData::GetCubeVertices() + BasicShapesData::GetCubeVerticesCount());
-		cubeNode->CPUVertices.resize(BasicShapesData::GetCubeVerticesCount());
+
+
+		const int32_t nrFloats = BasicShapesData::GetCubeVerticesCount();
+		constexpr int32_t nrFloatsInVertex = float(sizeof(SimpleVertex)) / sizeof(float);
+		const int32_t nrVertices = nrFloats / nrFloatsInVertex;
+
+		cubeNode->CPUVertices.resize(nrVertices);
 		memcpy(&cubeNode->CPUVertices[0], BasicShapesData::GetCubeVertices(), BasicShapesData::GetCubeVerticesCount());
 
 	}
@@ -69,6 +73,51 @@ void TBNQuadShape::Init(ID3D12GraphicsCommandList* inCommandList)
 		vbLayout.Push<float>(3, VertexInputType::Bitangent);
 
 		quadNode->VertexBuffer = D3D12RHI::Get()->CreateVertexBuffer(vbLayout, BasicShapesData::GetTBNQuadVertices(), BasicShapesData::GetTBNQuadVerticesCount(), quadNode->IndexBuffer);
+	}
+
+	eastl::shared_ptr<D3D12Texture2D> newTex = D3D12RHI::Get()->CreateAndLoadTexture2D("../Data/Textures/MinecraftGrass.jpg", /*inSRGB*/ true, true, inCommandList);
+
+	MeshMaterial newMat;
+	newMat.AlbedoMap = newTex;
+
+	Materials.push_back(newMat);
+	quadNode->MatIndex = 0;
+
+	AddChild(quadNode);
+}
+
+SquareShape::SquareShape(const eastl::string& inName)
+	: Model3D(inName)
+{}
+
+SquareShape::~SquareShape() = default;
+
+
+void SquareShape::Init(ID3D12GraphicsCommandList* inCommandList)
+{
+	eastl::shared_ptr<MeshNode> quadNode = eastl::make_shared<MeshNode>("Quad Mesh");
+
+	quadNode->IndexBuffer = D3D12RHI::Get()->CreateIndexBuffer(BasicShapesData::GetSquareIndices(), BasicShapesData::GetSquareIndicesCount());
+	quadNode->CPUIndices = eastl::vector<uint32_t>(BasicShapesData::GetSquareIndices(), BasicShapesData::GetSquareIndices() + BasicShapesData::GetSquareIndicesCount());
+
+	// Create the vertex buffer.
+	{
+		VertexInputLayout vbLayout;
+		// Vertex points
+		vbLayout.Push<float>(3, VertexInputType::Position);
+		// Vertex Tex Coords
+		vbLayout.Push<float>(3, VertexInputType::Normal);
+		vbLayout.Push<float>(2, VertexInputType::TexCoords);
+
+		quadNode->VertexBuffer = D3D12RHI::Get()->CreateVertexBuffer(vbLayout, BasicShapesData::GetSquareVertices(), BasicShapesData::GetSquareVerticesCount(), quadNode->IndexBuffer);
+
+		const int32_t nrFloats = BasicShapesData::GetSquareVerticesCount();
+		constexpr int32_t nrFloatsInVertex = sizeof(SimpleVertex) / sizeof(float);
+		const int32_t nrVertices = nrFloats / nrFloatsInVertex;
+
+		eastl::vector<SimpleVertex>& vertices = quadNode->CPUVertices;
+		vertices.resize(nrVertices);
+		memcpy(&vertices[0], BasicShapesData::GetSquareVertices(), BasicShapesData::GetSquareVerticesCount() * sizeof(float));
 	}
 
 	eastl::shared_ptr<D3D12Texture2D> newTex = D3D12RHI::Get()->CreateAndLoadTexture2D("../Data/Textures/MinecraftGrass.jpg", /*inSRGB*/ true, true, inCommandList);
