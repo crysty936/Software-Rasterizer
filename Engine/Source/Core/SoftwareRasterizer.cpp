@@ -105,6 +105,9 @@ void SoftwareRasterizer::TransposeImage()
 //	}
 //}
 
+const float CAMERA_FOV = 45.f;
+const float CAMERA_NEAR = 0.1f;
+const float CAMERA_FAR = 100.f;
 
 void SoftwareRasterizer::DrawModelWireframe(const eastl::shared_ptr<Model3D>& inModel)
 {
@@ -125,8 +128,9 @@ void SoftwareRasterizer::DrawModelWireframe(const eastl::shared_ptr<Model3D>& in
 	const Transform& modelTrans = inModel->GetAbsoluteTransform();
 	const glm::mat4 absoluteMat = modelTrans.GetMatrix();
 	const glm::mat4 projection = glm::orthoLH_ZO(-20.f, 20.f, -20.f, 20.f, 0.f, 20.f);
+	//const glm::mat4 projection = glm::perspectiveLH_ZO(glm::radians(CAMERA_FOV), static_cast<float>(ImageWidth) / static_cast<float>(ImageHeight), CAMERA_NEAR, CAMERA_FAR);
 
-
+	// Object needs to be at + or - 120 to be drawn, why?
 
 	for (uint32_t i = 0; i < modelChildren.size(); ++i)
 	{
@@ -150,6 +154,32 @@ void SoftwareRasterizer::DrawModelWireframe(const eastl::shared_ptr<Model3D>& in
 				}
 
 				const uint32_t idxStart = triangleIdx * 3;
+
+				//bool bCull = false;
+				// Backface cull
+				{
+					const glm::vec3 v0 = CPUVertices[CPUIndices[idxStart]].Position;
+					const glm::vec3 v1 = CPUVertices[CPUIndices[idxStart + 1]].Position;
+					const glm::vec3 v2 = CPUVertices[CPUIndices[idxStart + 2]].Position;
+
+					const glm::vec3 v0v1 = v1 - v0;
+					const glm::vec3 v0v2 = v2 - v0;
+
+					// LH CCW culling
+					const glm::vec3 trianglePlaneNormal = glm::normalize(glm::cross(v0v1, v0v2));
+					const glm::vec3 viewDir = glm::vec3(0.f, 0.f, 1.f);
+
+					const float dot = glm::dot(trianglePlaneNormal, viewDir);
+
+					if (dot < 0.f)
+					{
+						// Skip triangle
+						continue;
+
+						//bCull = true;
+					}
+				}
+
 				for (uint32_t j = 0; j < 3; ++j)
 				{
 					if (countLines >= maxLines)
@@ -177,6 +207,7 @@ void SoftwareRasterizer::DrawModelWireframe(const eastl::shared_ptr<Model3D>& in
 					// Re-map to 0..1
 					currVertex = (currVertex + 1.f) / 2.f;
 					nextVertex = (nextVertex + 1.f) / 2.f;
+
 
 					const glm::vec2i start(currVertex.x * (ImageWidth - 1), currVertex.y * (ImageHeight - 1));
 					const glm::vec2i end(nextVertex.x * (ImageWidth - 1), nextVertex.y * (ImageHeight - 1));
@@ -218,7 +249,13 @@ void SoftwareRasterizer::DrawLine(const glm::vec2i& inStart, const glm::vec2i& i
 
 	for (int32_t i = 0; i <= nrSteps; ++i)
 	{
-		FinalImageData[y * ImageWidth + x] = ConvertToRGBA(inColor);
+		const int32_t pixelPos = y * ImageWidth + x;
+		if (pixelPos < 0 || pixelPos > (ImageWidth * ImageHeight))
+		{
+			continue;
+		}
+
+		FinalImageData[pixelPos] = ConvertToRGBA(inColor);
 		//LOG_INFO("Writing to x: %d and y: %d", x, y);
 
 		slopeErrorY += slopeY;
