@@ -415,9 +415,11 @@ void AppModeBase::BeginFrame()
 
 {
 	Rasterizer.ClearImage();
+	Rasterizer.DoTest();
 	//Rasterizer.DrawRandom();
-	Rasterizer.DrawModelWireframe(MainModel);
+	//Rasterizer.DrawModelWireframe(MainModel);
 	//Rasterizer.DrawLine(glm::vec2(40, 30), glm::vec2(0, 30));
+
 	Rasterizer.PrepareBeforePresent();
 	uint32_t* imageData = Rasterizer.GetImage();
 	D3D12RHI::Get()->UpdateTexture2D(MainImage->GetCurrentImage(), imageData, SoftRasterizerImgWidth, SoftRasterizerImgHeight, m_commandList);

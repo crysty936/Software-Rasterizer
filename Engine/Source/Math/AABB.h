@@ -4,6 +4,33 @@
 #include "EASTL/array.h"
 #include "EASTL/vector.h"
 #include "glm/ext/vector_float3.hpp"
+#include "glm/ext/vector_float2.hpp"
+
+struct AABB2Di
+{
+	glm::vec2i Min;
+	glm::vec2i Max;
+
+	AABB2Di& operator +=(const AABB2Di& inAABB);
+	AABB2Di& operator +=(const glm::vec2i& inVec);
+
+	inline glm::vec2i GetExtent() const
+	{
+		return (Max - Min) / 2;
+	}
+
+	inline void GetCenterAndExtent(OUT glm::vec2i& outCenter, OUT glm::vec2i& outExtent) const
+	{
+		outExtent = GetExtent();
+		outCenter = Min + outExtent;
+	}
+
+	//eastl::array<glm::vec3, 8> GetVertices() const;
+	//void DebugDraw() const;
+
+private:
+	bool IsInitialized = false;
+};
 
 struct AABB
 {
@@ -12,6 +39,7 @@ struct AABB
 
 	AABB& operator +=(const AABB& inAABB);
 	AABB& operator +=(const glm::vec3& inVec);
+
 
 	inline glm::vec3 GetExtent() const
 	{

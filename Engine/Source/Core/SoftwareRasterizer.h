@@ -19,6 +19,10 @@ public:
 	void PrepareBeforePresent();
 	inline void ClearImage();
 
+	void DrawTriangle(const glm::vec2i& A, const glm::vec2i& B, const glm::vec2i& C);
+	void DrawPoint(const glm::vec2i& inPoint, const glm::vec4& inColor = glm::vec4(1.f, 1.f, 1.f, 1.f));
+	void DoTest();
+
 private:
 	uint32_t* FinalImageData = nullptr;
 	glm::vec4* IntermediaryImageData = nullptr;

@@ -65,3 +65,30 @@ void AABB::DebugDraw() const
 {
 	DrawDebugHelpers::DrawBoxArray(GetVertices(), false);
 }
+
+AABB2Di& AABB2Di::operator+=(const AABB2Di& inAABB)
+{
+	*this += inAABB.Min;
+	*this += inAABB.Max;
+
+	return *this;
+}
+
+AABB2Di& AABB2Di::operator+=(const glm::vec2i& inVec)
+{
+	if (IsInitialized)
+	{
+		Min.x = glm::min(Min.x, inVec.x);
+		Min.y = glm::min(Min.y, inVec.y);
+
+		Max.x = glm::max(Max.x, inVec.x);
+		Max.y = glm::max(Max.y, inVec.y);
+	}
+	else
+	{
+		Min = Max = inVec;
+		IsInitialized = true;
+	}
+
+	return *this;
+}

@@ -8,6 +8,7 @@
 #include "Entity/TransformObject.h"
 #include "Renderer/Model/3D/Model3D.h"
 #include "imgui.h"
+#include "Math/AABB.h"
 
 static uint32_t ConvertToRGBA(const glm::vec4& color)
 {
@@ -109,6 +110,8 @@ const float CAMERA_FOV = 45.f;
 const float CAMERA_NEAR = 0.1f;
 const float CAMERA_FAR = 100.f;
 
+
+
 void SoftwareRasterizer::DrawModelWireframe(const eastl::shared_ptr<Model3D>& inModel)
 {
 	static int32_t maxLines = 128;
@@ -125,12 +128,17 @@ void SoftwareRasterizer::DrawModelWireframe(const eastl::shared_ptr<Model3D>& in
 	int32_t countTriangles = 0;
 
 	const eastl::vector<TransformObjPtr>& modelChildren = inModel->GetChildren();
+
+#define USE_PROJECTION 0
+
+#if USE_PROJECTION
 	const Transform& modelTrans = inModel->GetAbsoluteTransform();
 	const glm::mat4 absoluteMat = modelTrans.GetMatrix();
 	const glm::mat4 projection = glm::orthoLH_ZO(-20.f, 20.f, -20.f, 20.f, 0.f, 20.f);
 	//const glm::mat4 projection = glm::perspectiveLH_ZO(glm::radians(CAMERA_FOV), static_cast<float>(ImageWidth) / static_cast<float>(ImageHeight), CAMERA_NEAR, CAMERA_FAR);
-
 	// Object needs to be at + or - 120 to be drawn, why?
+#endif
+
 
 	for (uint32_t i = 0; i < modelChildren.size(); ++i)
 	{
@@ -141,7 +149,7 @@ void SoftwareRasterizer::DrawModelWireframe(const eastl::shared_ptr<Model3D>& in
 			const eastl::vector<SimpleVertex> CPUVertices = node->CPUVertices;
 			const eastl::vector<uint32_t> CPUIndices = node->CPUIndices;
 
-			const uint32_t numIndices = CPUIndices.size();
+			const uint32_t numIndices = static_cast<uint32_t>(CPUIndices.size());
 			ASSERT(numIndices % 3 == 0);
 			const uint32_t numTriangles = numIndices / 3;
 
@@ -155,7 +163,6 @@ void SoftwareRasterizer::DrawModelWireframe(const eastl::shared_ptr<Model3D>& in
 
 				const uint32_t idxStart = triangleIdx * 3;
 
-				//bool bCull = false;
 				// Backface cull
 				{
 					const glm::vec3 v0 = CPUVertices[CPUIndices[idxStart]].Position;
@@ -175,8 +182,6 @@ void SoftwareRasterizer::DrawModelWireframe(const eastl::shared_ptr<Model3D>& in
 					{
 						// Skip triangle
 						continue;
-
-						//bCull = true;
 					}
 				}
 
@@ -193,22 +198,29 @@ void SoftwareRasterizer::DrawModelWireframe(const eastl::shared_ptr<Model3D>& in
 					glm::vec3 currVertex = CPUVertices[currIndex].Position;
 					glm::vec3 nextVertex = CPUVertices[nextIndex].Position;
 
-					glm::vec4 currTransformedVertex = absoluteMat * glm::vec4(currVertex.x, currVertex.y, currVertex.z, 1.f);
-					currTransformedVertex = currTransformedVertex * projection;
-					currTransformedVertex /= currTransformedVertex.w;
+#if USE_PROJECTION
+					// Current vertex
+					{
+						glm::vec4 currTransformedVertex = absoluteMat * glm::vec4(currVertex.x, currVertex.y, currVertex.z, 1.f);
+						currTransformedVertex = currTransformedVertex * projection;
+						currTransformedVertex /= currTransformedVertex.w;
+						currVertex = glm::vec3(currTransformedVertex);
+					}
 
-					glm::vec4 nextTransformedVertex = absoluteMat * glm::vec4(nextVertex.x, nextVertex.y, nextVertex.z, 1.f);
-					nextTransformedVertex = nextTransformedVertex * projection;
-					nextTransformedVertex /= nextTransformedVertex.w;
-					
-					currVertex = glm::vec3(currTransformedVertex);
-					nextVertex = glm::vec3(nextTransformedVertex);
+					// Next vertex
+					{
+						glm::vec4 nextTransformedVertex = absoluteMat * glm::vec4(nextVertex.x, nextVertex.y, nextVertex.z, 1.f);
+						nextTransformedVertex = nextTransformedVertex * projection;
+						nextTransformedVertex /= nextTransformedVertex.w;
+						nextVertex = glm::vec3(nextTransformedVertex);
+					}
+#endif
 
-					// Re-map to 0..1
+					// Re-map from -1..1 to 0..1
 					currVertex = (currVertex + 1.f) / 2.f;
 					nextVertex = (nextVertex + 1.f) / 2.f;
 
-
+					// Re-map to pixel space
 					const glm::vec2i start(currVertex.x * (ImageWidth - 1), currVertex.y * (ImageHeight - 1));
 					const glm::vec2i end(nextVertex.x * (ImageWidth - 1), nextVertex.y * (ImageHeight - 1));
 
@@ -281,11 +293,11 @@ void SoftwareRasterizer::DrawRandom()
 	const glm::vec4 ColorBlue = glm::vec4(0.f, 0.f, 1.f, 1.f);
 
 	const float stepSize = float(ImageHeight) / 5;
-	for (uint32_t i = 0; i < ImageHeight; ++i)
+	for (int32_t i = 0; i < ImageHeight; ++i)
 	{
 		//const bool bIsRed = (i / int32_t(stepSize)) % 2 == 0;
 
-		for (uint32_t j = 0; j < ImageWidth; ++j)
+		for (int32_t j = 0; j < ImageWidth; ++j)
 		{
 			//const bool bIsRed = (i+j) % 2 == 0;
 
@@ -306,13 +318,6 @@ void SoftwareRasterizer::DrawRandom()
 
 uint32_t* SoftwareRasterizer::GetImage()
 {
-	//{
-	//	const glm::vec2i start(0, 5);
-	//	const glm::vec2i end(400,500);
-
-	//	DrawLine(start, end, glm::vec4(1.f, 1.f, 1.f, 1.f));
-	//}
-
 	return FinalImageData;
 }
 
@@ -325,4 +330,91 @@ void SoftwareRasterizer::PrepareBeforePresent()
 void SoftwareRasterizer::ClearImage()
 {
 	memset(FinalImageData, 0, ImageWidth * ImageHeight * 4);
+}
+
+inline int32_t Get2DCrossProductMagnitude(const glm::vec2i& A, const glm::vec2i& B)
+{
+	// |a.x b.x| or |a.x a.y|
+	// |a.y b.y|    |b.x b.y|
+	// determinant of M == det of transpose of M
+
+	// = ax * by - ay * bx
+
+	const int32_t det = A.x * B.y - A.y * B.x;
+
+	return det;
+}
+
+void SoftwareRasterizer::DrawTriangle(const glm::vec2i& A, const glm::vec2i& B, const glm::vec2i& C)
+{
+	// bounding box
+	// draw inside of it and check if pixel is in using cross product method but for 2d vectors
+	// might also be possible to check using barycentric coordinates, need to check
+
+	AABB2Di box;
+	box += A;
+	box += B;
+	box += C;
+
+	const glm::vec2i& min = box.Min;
+	const glm::vec2i& max = box.Max;
+	//const int32_t length = max.x - min.x;
+
+	const glm::vec2i AB = B - A;
+	const glm::vec2i BC = C - B;
+	const glm::vec2i CA = A - C;
+
+	for (int32_t i = min.y; i <= max.y; ++i)
+	{
+		for (int32_t j = min.x; j <= max.x; ++j)
+		{
+			const glm::vec2i P(j, i);
+
+			// Check if inside triangle by checking cross product between edges and vectors made from edge origin to P
+			// Inside out test
+			const glm::vec2i AP = P - A;
+			if (Get2DCrossProductMagnitude(AB, AP) < 0)
+			{
+				continue;
+			}
+			const glm::vec2i BP = P - B;
+			if (Get2DCrossProductMagnitude(BC, BP) < 0)
+			{
+				continue;
+			}
+
+			const glm::vec2i CP = P - C;
+			if (Get2DCrossProductMagnitude(CA, CP) < 0)
+			{
+				continue;
+			}
+
+			FinalImageData[i * ImageWidth + j] = ConvertToRGBA(glm::vec4(1.f, 1.f, 1.f, 1.f));
+		}
+	}
+
+
+}
+
+void SoftwareRasterizer::DrawPoint(const glm::vec2i& inPoint, const glm::vec4& inColor)
+{
+	FinalImageData[inPoint.y * ImageWidth + inPoint.x] = ConvertToRGBA(inColor);
+}
+
+void SoftwareRasterizer::DoTest()
+{
+	{
+		const glm::vec2i A(40, 58);
+		const glm::vec2i B(10,10);
+		const glm::vec2i C(70,25);
+
+		//DrawPoint(B);
+
+		DrawTriangle(A, B, C);
+
+		DrawLine(A, B, glm::vec4(0.f, 1.f, 0.f, 1.f));
+		DrawLine(B, C, glm::vec4(0.f, 1.f, 0.f, 1.f));
+		DrawLine(C, A, glm::vec4(0.f, 1.f, 0.f, 1.f));
+	}
+
 }
