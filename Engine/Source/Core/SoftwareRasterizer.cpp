@@ -9,6 +9,8 @@
 #include "Renderer/Model/3D/Model3D.h"
 #include "imgui.h"
 #include "Math/AABB.h"
+#include "Scene/Scene.h"
+#include "Scene/SceneManager.h"
 
 static uint32_t ConvertToRGBA(const glm::vec4& color)
 {
@@ -144,6 +146,11 @@ void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 	//const glm::mat4 projection = glm::orthoLH_ZO(-20.f, 20.f, -20.f, 20.f, 0.f, 20.f);
 	const glm::mat4 projection = glm::perspectiveLH_ZO(glm::radians(CAMERA_FOV), static_cast<float>(ImageWidth) / static_cast<float>(ImageHeight), CAMERA_NEAR, CAMERA_FAR);
 
+	SceneManager& sManager = SceneManager::Get();
+	const Scene& currentScene = sManager.GetCurrentScene();
+	//const eastl::shared_ptr<Camera>& currentCamera = currentScene.GetCurrentCamera();
+	const glm::mat4 view = currentScene.GetMainCameraLookAt();
+
 	for (uint32_t i = 0; i < modelChildren.size(); ++i)
 	{
 		const TransformObjPtr& currChild = modelChildren[i];
@@ -194,7 +201,7 @@ void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 					const glm::vec3 vtxB = CPUVertices[CPUIndices[idxStart + 1]].Position;
 					const glm::vec3 vtxC = CPUVertices[CPUIndices[idxStart + 2]].Position;
 
-					const glm::mat4 worldToClip = projection * absoluteMat;
+					const glm::mat4 worldToClip = projection * view * absoluteMat;
 					glm::vec3 vtxATransformed = TransformPosition(vtxA, worldToClip);
 					glm::vec3 vtxBTransformed = TransformPosition(vtxB, worldToClip);
 					glm::vec3 vtxCTransformed = TransformPosition(vtxC, worldToClip);
