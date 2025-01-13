@@ -11,6 +11,7 @@ public:
 	void Init(const int32_t inImageWidth, const int32_t inImageHeight);
 	~SoftwareRasterizer();
 	void TransposeImage();
+	void DrawModel(const eastl::shared_ptr<class Model3D>& inModel);
 	void DrawModelWireframe(const eastl::shared_ptr<class Model3D>& inModel);
 	void DrawLine(const glm::vec2i& inStart, const glm::vec2i& inEnd, const glm::vec4& inColor = glm::vec4(1.f, 1.f, 1.f, 1.f));
 	void DrawRandom();
@@ -18,6 +19,7 @@ public:
 	uint32_t* GetImage();
 	void PrepareBeforePresent();
 	inline void ClearImage();
+	inline bool TryGetPixelPos(const int32_t X, const int32_t Y, int32_t& outPixelPos);
 
 	void DrawTriangle(const glm::vec2i& A, const glm::vec2i& B, const glm::vec2i& C);
 	void DrawPoint(const glm::vec2i& inPoint, const glm::vec4& inColor = glm::vec4(1.f, 1.f, 1.f, 1.f));

@@ -195,10 +195,10 @@ void AppModeBase::CreateInitialResources()
 
 	// Models
 
-	//MainModel = eastl::make_shared<CubeShape>("TheCube");
-	MainModel = eastl::make_shared<SquareShape>("TheSquare");
+	MainModel = eastl::make_shared<CubeShape>("TheCube");
+	//MainModel = eastl::make_shared<SquareShape>("TheSquare");
 	MainModel->Init(m_commandList);
-	MainModel->SetScale(glm::vec3(5.f, 5.f, 5.f));
+	//MainModel->SetScale(glm::vec3(5.f, 5.f, 5.f));
 
 	currentScene.AddObject(MainModel);
 
@@ -415,9 +415,9 @@ void AppModeBase::BeginFrame()
 
 {
 	Rasterizer.ClearImage();
-	Rasterizer.DoTest();
+	//Rasterizer.DoTest();
 	//Rasterizer.DrawRandom();
-	//Rasterizer.DrawModelWireframe(MainModel);
+	Rasterizer.DrawModelWireframe(MainModel);
 	//Rasterizer.DrawLine(glm::vec2(40, 30), glm::vec2(0, 30));
 
 	Rasterizer.PrepareBeforePresent();

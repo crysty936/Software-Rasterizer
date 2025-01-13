@@ -110,6 +110,140 @@ const float CAMERA_FOV = 45.f;
 const float CAMERA_NEAR = 0.1f;
 const float CAMERA_FAR = 100.f;
 
+inline glm::vec3 TransformPosition(const glm::vec3& inVtx, const glm::mat4& inMat)
+{
+	glm::vec4 vtxTransformed = inMat * glm::vec4(inVtx.x, inVtx.y, inVtx.z, 1.f);
+
+	// Persp divide
+	vtxTransformed /= vtxTransformed.w;
+	return glm::vec3(vtxTransformed);
+}
+
+#define USE_PROJECTION 1
+
+void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
+{
+	static int32_t maxTriangles = 32;
+
+	{
+		ImGui::Begin("Software Rasterizer");
+		ImGui::SliderInt("Triangles to draw", &maxTriangles, 0, 32);
+		ImGui::End();
+	}
+
+	int32_t countTriangles = 0;
+
+	const eastl::vector<TransformObjPtr>& modelChildren = inModel->GetChildren();
+
+
+#if USE_PROJECTION
+	const Transform& modelTrans = inModel->GetAbsoluteTransform();
+	const glm::mat4 absoluteMat = modelTrans.GetMatrix();
+	const glm::mat4 projection = glm::orthoLH_ZO(-20.f, 20.f, -20.f, 20.f, 0.f, 20.f);
+	//const glm::mat4 projection = glm::perspectiveLH_ZO(glm::radians(CAMERA_FOV), static_cast<float>(ImageWidth) / static_cast<float>(ImageHeight), CAMERA_NEAR, CAMERA_FAR);
+	// Object needs to be at + or - 120 to be drawn, why?
+#endif
+
+
+	for (uint32_t i = 0; i < modelChildren.size(); ++i)
+	{
+		const TransformObjPtr& currChild = modelChildren[i];
+		eastl::shared_ptr<MeshNode> node = eastl::dynamic_shared_pointer_cast<MeshNode>(currChild);
+		if (node)
+		{
+			const eastl::vector<SimpleVertex> CPUVertices = node->CPUVertices;
+			const eastl::vector<uint32_t> CPUIndices = node->CPUIndices;
+
+			const uint32_t numIndices = static_cast<uint32_t>(CPUIndices.size());
+			ASSERT(numIndices % 3 == 0);
+			const uint32_t numTriangles = numIndices / 3;
+
+			// Draw triangle by triangle
+			for (uint32_t triangleIdx = 0; triangleIdx < numTriangles; ++triangleIdx)
+			{
+				if (countTriangles >= maxTriangles)
+				{
+					return;
+				}
+
+				const uint32_t idxStart = triangleIdx * 3;
+
+				// Backface cull
+				{
+					const glm::vec3 v0 = CPUVertices[CPUIndices[idxStart]].Position;
+					const glm::vec3 v1 = CPUVertices[CPUIndices[idxStart + 1]].Position;
+					const glm::vec3 v2 = CPUVertices[CPUIndices[idxStart + 2]].Position;
+
+					const glm::vec3 v0v1 = v1 - v0;
+					const glm::vec3 v0v2 = v2 - v0;
+
+					// LH CCW culling
+					const glm::vec3 trianglePlaneNormal = glm::normalize(glm::cross(v0v1, v0v2));
+					const glm::vec3 viewDir = glm::vec3(0.f, 0.f, 1.f);
+
+					const float dot = glm::dot(trianglePlaneNormal, viewDir);
+
+					if (dot < 0.f)
+					{
+						// Skip triangle
+						continue;
+					}
+				}
+
+				{
+					glm::vec3 vertexA = CPUVertices[idxStart].Position;
+					glm::vec3 vertexB = CPUVertices[idxStart + 1].Position;
+					glm::vec3 vertexC = CPUVertices[idxStart + 2].Position;
+
+#if USE_PROJECTION
+					//// A
+					//{
+					//	vertexA = TransformPosition(vertexA, )
+					//	glm::vec4 aTransformed = absoluteMat * glm::vec4(vertexA.x, vertexA.y, vertexA.z, 1.f);
+					//	aTransformed = aTransformed * projection;
+					//	aTransformed /= aTransformed.w;
+					//	vertexA = glm::vec3(aTransformed);
+					//}
+
+					//// B
+					//{
+					//	glm::vec4 bTransformed = absoluteMat * glm::vec4(vertexB.x, vertexB.y, vertexB.z, 1.f);
+					//	bTransformed = bTransformed * projection;
+					//	bTransformed /= bTransformed.w;
+					//	vertexB = glm::vec3(bTransformed);
+					//}
+
+					//// C
+					//{
+					//	glm::vec4 cTransformed = absoluteMat * glm::vec4(C.x, C.y, vertexC.z, 1.f);
+					//	cTransformed = cTransformed * projection;
+					//	cTransformed /= cTransformed.w;
+					//	C = glm::vec3(cTransformed);
+					//}
+
+#endif
+
+					// Map from -1..1 to 0..1
+					vertexA = (vertexA + 1.f) / 2.f;
+					vertexB = (vertexB + 1.f) / 2.f;
+					vertexC = (vertexC + 1.f) / 2.f;
+
+					// Map to pixel space
+					const glm::vec2i A(vertexA.x * (ImageWidth - 1), vertexA.y * (ImageHeight - 1));
+					const glm::vec2i B(vertexB.x * (ImageWidth - 1), vertexB.y * (ImageHeight - 1));
+					const glm::vec2i C(vertexC.x * (ImageWidth - 1), vertexC.y * (ImageHeight - 1));
+
+					DrawTriangle(A, B, C);
+					//DrawLine(start, end);
+				}
+				++countTriangles;
+
+			}
+		}
+
+	}
+
+}
 
 
 void SoftwareRasterizer::DrawModelWireframe(const eastl::shared_ptr<Model3D>& inModel)
@@ -129,13 +263,11 @@ void SoftwareRasterizer::DrawModelWireframe(const eastl::shared_ptr<Model3D>& in
 
 	const eastl::vector<TransformObjPtr>& modelChildren = inModel->GetChildren();
 
-#define USE_PROJECTION 0
-
 #if USE_PROJECTION
 	const Transform& modelTrans = inModel->GetAbsoluteTransform();
 	const glm::mat4 absoluteMat = modelTrans.GetMatrix();
-	const glm::mat4 projection = glm::orthoLH_ZO(-20.f, 20.f, -20.f, 20.f, 0.f, 20.f);
-	//const glm::mat4 projection = glm::perspectiveLH_ZO(glm::radians(CAMERA_FOV), static_cast<float>(ImageWidth) / static_cast<float>(ImageHeight), CAMERA_NEAR, CAMERA_FAR);
+	//const glm::mat4 projection = glm::orthoLH_ZO(-20.f, 20.f, -20.f, 20.f, 0.f, 20.f);
+	const glm::mat4 projection = glm::perspectiveLH_ZO(glm::radians(CAMERA_FOV), static_cast<float>(ImageWidth) / static_cast<float>(ImageHeight), CAMERA_NEAR, CAMERA_FAR);
 	// Object needs to be at + or - 120 to be drawn, why?
 #endif
 
@@ -195,34 +327,69 @@ void SoftwareRasterizer::DrawModelWireframe(const eastl::shared_ptr<Model3D>& in
 					const uint32_t nextIndexIndex = j == 2 ? idxStart : (idxStart + j + 1);
 					const uint32_t nextIndex = CPUIndices[nextIndexIndex];
 
-					glm::vec3 currVertex = CPUVertices[currIndex].Position;
-					glm::vec3 nextVertex = CPUVertices[nextIndex].Position;
+					const glm::vec3 currVtx = CPUVertices[currIndex].Position;
+					const glm::vec3 nextVtx = CPUVertices[nextIndex].Position;
 
+					glm::vec4 homCurrTransfVtx;
+					glm::vec3 currTranfsVtx;
 #if USE_PROJECTION
 					// Current vertex
 					{
-						glm::vec4 currTransformedVertex = absoluteMat * glm::vec4(currVertex.x, currVertex.y, currVertex.z, 1.f);
-						currTransformedVertex = currTransformedVertex * projection;
-						currTransformedVertex /= currTransformedVertex.w;
-						currVertex = glm::vec3(currTransformedVertex);
+						homCurrTransfVtx = absoluteMat * glm::vec4(currVtx.x, currVtx.y, currVtx.z, 1.f);
+						homCurrTransfVtx = projection * homCurrTransfVtx;
+						const float hommCoordinate = homCurrTransfVtx.w;
+						if (hommCoordinate != 0)
+						{
+							homCurrTransfVtx /= hommCoordinate;
+						}
+						currTranfsVtx = glm::vec3(homCurrTransfVtx);
+
+						if (glm::isinf(currTranfsVtx.x) || glm::isinf(currTranfsVtx.y) || glm::isinf(currTranfsVtx.z))
+						{
+							__debugbreak();
+						}
 					}
 
+					glm::vec4 homNextTransfVtx;
+					glm::vec3 nextTranfsVtx;
 					// Next vertex
 					{
-						glm::vec4 nextTransformedVertex = absoluteMat * glm::vec4(nextVertex.x, nextVertex.y, nextVertex.z, 1.f);
-						nextTransformedVertex = nextTransformedVertex * projection;
-						nextTransformedVertex /= nextTransformedVertex.w;
-						nextVertex = glm::vec3(nextTransformedVertex);
+
+						homNextTransfVtx = absoluteMat * glm::vec4(nextVtx.x, nextVtx.y, nextVtx.z, 1.f);
+						homNextTransfVtx = projection * homNextTransfVtx;
+						const float hommCoordinate = homNextTransfVtx.w;
+						// Gives an in when vtx is at -1, -1, -1 and pos at 1, 1, 1 because hommCoordinate is 0
+						if (hommCoordinate != 0)
+						{
+							homNextTransfVtx /= hommCoordinate;
+						}
+
+						nextTranfsVtx = glm::vec3(homNextTransfVtx);
+						
+						if (glm::isinf(nextTranfsVtx.x) || glm::isinf(nextTranfsVtx.y) || glm::isinf(nextTranfsVtx.z))
+						{
+							__debugbreak();
+						}
+
 					}
 #endif
+					//if (glm::isinf(currTranfsVtx.x) || glm::isinf(currTranfsVtx.y) || glm::isinf(currTranfsVtx.z) ||
+					//	 glm::isinf(nextTranfsVtx.x) || glm::isinf(nextTranfsVtx.y) || glm::isinf(nextTranfsVtx.z)
+					//	)
+					//{
+					//	__debugbreak();
+					//}
+
 
 					// Re-map from -1..1 to 0..1
-					currVertex = (currVertex + 1.f) / 2.f;
-					nextVertex = (nextVertex + 1.f) / 2.f;
+					const glm::vec3 remappedCurrVtx = (currTranfsVtx + 1.f) / 2.f;
+					const glm::vec3 remappedNextVtx = (nextTranfsVtx + 1.f) / 2.f;
+
+					// TODO: Barycentric coordinates to get pixel z and cull if behind camera
 
 					// Re-map to pixel space
-					const glm::vec2i start(currVertex.x * (ImageWidth - 1), currVertex.y * (ImageHeight - 1));
-					const glm::vec2i end(nextVertex.x * (ImageWidth - 1), nextVertex.y * (ImageHeight - 1));
+					const glm::vec2i start(remappedCurrVtx.x * (ImageWidth - 1), remappedCurrVtx.y * (ImageHeight - 1));
+					const glm::vec2i end(remappedNextVtx.x * (ImageWidth - 1), remappedNextVtx.y * (ImageHeight - 1));
 
 					DrawLine(start, end);
 					++countLines;
@@ -241,12 +408,6 @@ void SoftwareRasterizer::DrawLine(const glm::vec2i& inStart, const glm::vec2i& i
 	const int32_t dx = glm::abs(inEnd.x - inStart.x);
 	const int32_t dy = glm::abs(inEnd.y - inStart.y);
 
-	if (dx < 0 || dx >= ImageWidth || dy < 0 || dy >= ImageHeight)
-	{
-		return;
-	}
-	//ASSERT(dx < ImageWidth && dy < ImageHeight);
-
 	const int32_t nrSteps = dx > dy ? dx : dy;
 
 	const int32_t slopeY = dy;
@@ -261,13 +422,12 @@ void SoftwareRasterizer::DrawLine(const glm::vec2i& inStart, const glm::vec2i& i
 
 	for (int32_t i = 0; i <= nrSteps; ++i)
 	{
-		const int32_t pixelPos = y * ImageWidth + x;
-		if (pixelPos < 0 || pixelPos > (ImageWidth * ImageHeight))
+		int32_t pixelPos = 0;
+		if (TryGetPixelPos(x, y, pixelPos))
 		{
-			continue;
+			FinalImageData[pixelPos] = ConvertToRGBA(inColor);
 		}
 
-		FinalImageData[pixelPos] = ConvertToRGBA(inColor);
 		//LOG_INFO("Writing to x: %d and y: %d", x, y);
 
 		slopeErrorY += slopeY;
@@ -332,6 +492,14 @@ void SoftwareRasterizer::ClearImage()
 	memset(FinalImageData, 0, ImageWidth * ImageHeight * 4);
 }
 
+bool SoftwareRasterizer::TryGetPixelPos(const int32_t X, const int32_t Y, int32_t& outPixelPos)
+{
+	outPixelPos = Y * ImageWidth + X;
+	const bool bValidPixel = X >= 0 && Y >= 0 && X < ImageWidth && Y < ImageHeight && outPixelPos >= 0 && (outPixelPos < (ImageWidth * ImageHeight));
+
+	return bValidPixel;
+}
+
 inline int32_t Get2DCrossProductMagnitude(const glm::vec2i& A, const glm::vec2i& B)
 {
 	// |a.x b.x| or |a.x a.y|
@@ -368,6 +536,12 @@ void SoftwareRasterizer::DrawTriangle(const glm::vec2i& A, const glm::vec2i& B, 
 	{
 		for (int32_t j = min.x; j <= max.x; ++j)
 		{
+			int32_t pixelPos = 0;
+			if (!TryGetPixelPos(j, i, pixelPos))
+			{
+				continue;
+			}
+
 			const glm::vec2i P(j, i);
 
 			// Check if inside triangle by checking cross product between edges and vectors made from edge origin to P
@@ -389,6 +563,7 @@ void SoftwareRasterizer::DrawTriangle(const glm::vec2i& A, const glm::vec2i& B, 
 				continue;
 			}
 
+
 			FinalImageData[i * ImageWidth + j] = ConvertToRGBA(glm::vec4(1.f, 1.f, 1.f, 1.f));
 		}
 	}
@@ -398,7 +573,11 @@ void SoftwareRasterizer::DrawTriangle(const glm::vec2i& A, const glm::vec2i& B, 
 
 void SoftwareRasterizer::DrawPoint(const glm::vec2i& inPoint, const glm::vec4& inColor)
 {
-	FinalImageData[inPoint.y * ImageWidth + inPoint.x] = ConvertToRGBA(inColor);
+	int32_t pixelPos = 0;
+	if (TryGetPixelPos(inPoint.x, inPoint.y, pixelPos))
+	{
+		FinalImageData[pixelPos] = ConvertToRGBA(inColor);
+	}
 }
 
 void SoftwareRasterizer::DoTest()
@@ -410,11 +589,15 @@ void SoftwareRasterizer::DoTest()
 
 		//DrawPoint(B);
 
-		DrawTriangle(A, B, C);
+		//DrawTriangle(A, B, C);
 
-		DrawLine(A, B, glm::vec4(0.f, 1.f, 0.f, 1.f));
-		DrawLine(B, C, glm::vec4(0.f, 1.f, 0.f, 1.f));
-		DrawLine(C, A, glm::vec4(0.f, 1.f, 0.f, 1.f));
+		//DrawLine(A, B, glm::vec4(0.f, 1.f, 0.f, 1.f));
+		//DrawLine(B, C, glm::vec4(0.f, 1.f, 0.f, 1.f));
+		//DrawLine(C, A, glm::vec4(0.f, 1.f, 0.f, 1.f));
+
+
+		DrawLine(glm::vec2i(10, -5), glm::vec2i(10, 10), glm::vec4(0.f, 1.f, 0.f, 1.f));
+		//DrawLine(glm::vec2i(10, -20), glm::vec2i(10, 50), glm::vec4(0.f, 1.f, 0.f, 1.f));
 	}
 
 }
