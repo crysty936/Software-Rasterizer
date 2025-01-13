@@ -101,8 +101,8 @@ const float CAMERA_FOV = 45.f;
 const float CAMERA_NEAR = 0.1f;
 const float CAMERA_FAR = 10000.f;
 
-const int32_t SoftRasterizerImgWidth = 80;
-const int32_t SoftRasterizerImgHeight = 60;
+const int32_t SoftRasterizerImgWidth = 800;
+const int32_t SoftRasterizerImgHeight = 600;
 SoftwareRasterizer Rasterizer;
 eastl::shared_ptr<D3D12Texture2DWritable> MainImage;
 eastl::shared_ptr<Model3D> MainModel;
@@ -166,7 +166,7 @@ void AppModeBase::CreateInitialResources()
 	// Prepare Data
 
 	CreatePSOs();
-	
+
 	// Create the command list.
 	DXAssert(D3D12Globals::Device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocators[D3D12Utility::CurrentFrameIndex], m_QuadDrawPSO, IID_PPV_ARGS(&m_commandList)));
 	m_commandList->SetName(L"Main GFX Cmd List");
@@ -212,7 +212,7 @@ void AppModeBase::CreateInitialResources()
 
 	//eastl::shared_ptr<AssimpModel3D> model= eastl::make_shared<AssimpModel3D>("../Data/Models/Shiba/scene.gltf", "Shiba");
 	//model->Init(m_commandList);
-	
+
 	//currentScene.AddObject(model);
 
 
@@ -413,17 +413,37 @@ void AppModeBase::BeginFrame()
 	m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
 
-{
-	Rasterizer.ClearImage();
-	//Rasterizer.DoTest();
-	//Rasterizer.DrawRandom();
-	Rasterizer.DrawModelWireframe(MainModel);
-	//Rasterizer.DrawLine(glm::vec2(40, 30), glm::vec2(0, 30));
+	{
 
-	Rasterizer.PrepareBeforePresent();
-	uint32_t* imageData = Rasterizer.GetImage();
-	D3D12RHI::Get()->UpdateTexture2D(MainImage->GetCurrentImage(), imageData, SoftRasterizerImgWidth, SoftRasterizerImgHeight, m_commandList);
-}
+		ImGui::Begin("App Mode Rasterizer Options");
+		static bool bDrawWireframe = true;
+
+		ImGui::Checkbox("Draw Wireframe", &bDrawWireframe);
+
+
+		Rasterizer.ClearImage();
+		//Rasterizer.DoTest();
+
+		//if (bDrawWireframe)
+		//{
+		//	Rasterizer.DrawModelWireframe(MainModel);
+		//}
+		//else
+		//{
+			Rasterizer.DrawModel(MainModel);
+
+		//}
+
+		//Rasterizer.DrawLine(glm::vec2(40, 30), glm::vec2(0, 30));
+
+		Rasterizer.PrepareBeforePresent();
+		uint32_t* imageData = Rasterizer.GetImage();
+		D3D12RHI::Get()->UpdateTexture2D(MainImage->GetCurrentImage(), imageData, SoftRasterizerImgWidth, SoftRasterizerImgHeight, m_commandList);
+
+		ImGui::End();
+
+
+	}
 
 
 	// Set viewport and scissor region
@@ -530,7 +550,7 @@ void AppModeBase::Terminate()
 	delete GameMode;
 	GameMode = nullptr;
 
-	
+
 }
 
 void AppModeBase::Tick(float inDeltaT)

@@ -114,12 +114,16 @@ inline glm::vec3 TransformPosition(const glm::vec3& inVtx, const glm::mat4& inMa
 {
 	glm::vec4 vtxTransformed = inMat * glm::vec4(inVtx.x, inVtx.y, inVtx.z, 1.f);
 
+	const float hommCoordinate = vtxTransformed.w;
 	// Persp divide
-	vtxTransformed /= vtxTransformed.w;
+	// Can give divide by 0 when vtx is on near plane as dist is 0 then
+	if (hommCoordinate != 0)
+	{
+		vtxTransformed /= hommCoordinate;
+	}
+
 	return glm::vec3(vtxTransformed);
 }
-
-#define USE_PROJECTION 1
 
 void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 {
@@ -135,15 +139,10 @@ void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 
 	const eastl::vector<TransformObjPtr>& modelChildren = inModel->GetChildren();
 
-
-#if USE_PROJECTION
 	const Transform& modelTrans = inModel->GetAbsoluteTransform();
 	const glm::mat4 absoluteMat = modelTrans.GetMatrix();
-	const glm::mat4 projection = glm::orthoLH_ZO(-20.f, 20.f, -20.f, 20.f, 0.f, 20.f);
-	//const glm::mat4 projection = glm::perspectiveLH_ZO(glm::radians(CAMERA_FOV), static_cast<float>(ImageWidth) / static_cast<float>(ImageHeight), CAMERA_NEAR, CAMERA_FAR);
-	// Object needs to be at + or - 120 to be drawn, why?
-#endif
-
+	//const glm::mat4 projection = glm::orthoLH_ZO(-20.f, 20.f, -20.f, 20.f, 0.f, 20.f);
+	const glm::mat4 projection = glm::perspectiveLH_ZO(glm::radians(CAMERA_FOV), static_cast<float>(ImageWidth) / static_cast<float>(ImageHeight), CAMERA_NEAR, CAMERA_FAR);
 
 	for (uint32_t i = 0; i < modelChildren.size(); ++i)
 	{
@@ -191,50 +190,30 @@ void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 				}
 
 				{
-					glm::vec3 vertexA = CPUVertices[idxStart].Position;
-					glm::vec3 vertexB = CPUVertices[idxStart + 1].Position;
-					glm::vec3 vertexC = CPUVertices[idxStart + 2].Position;
+					const glm::vec3 vtxA = CPUVertices[CPUIndices[idxStart]].Position;
+					const glm::vec3 vtxB = CPUVertices[CPUIndices[idxStart + 1]].Position;
+					const glm::vec3 vtxC = CPUVertices[CPUIndices[idxStart + 2]].Position;
 
-#if USE_PROJECTION
-					//// A
-					//{
-					//	vertexA = TransformPosition(vertexA, )
-					//	glm::vec4 aTransformed = absoluteMat * glm::vec4(vertexA.x, vertexA.y, vertexA.z, 1.f);
-					//	aTransformed = aTransformed * projection;
-					//	aTransformed /= aTransformed.w;
-					//	vertexA = glm::vec3(aTransformed);
-					//}
-
-					//// B
-					//{
-					//	glm::vec4 bTransformed = absoluteMat * glm::vec4(vertexB.x, vertexB.y, vertexB.z, 1.f);
-					//	bTransformed = bTransformed * projection;
-					//	bTransformed /= bTransformed.w;
-					//	vertexB = glm::vec3(bTransformed);
-					//}
-
-					//// C
-					//{
-					//	glm::vec4 cTransformed = absoluteMat * glm::vec4(C.x, C.y, vertexC.z, 1.f);
-					//	cTransformed = cTransformed * projection;
-					//	cTransformed /= cTransformed.w;
-					//	C = glm::vec3(cTransformed);
-					//}
-
-#endif
+					const glm::mat4 worldToClip = projection * absoluteMat;
+					glm::vec3 vtxATransformed = TransformPosition(vtxA, worldToClip);
+					glm::vec3 vtxBTransformed = TransformPosition(vtxB, worldToClip);
+					glm::vec3 vtxCTransformed = TransformPosition(vtxC, worldToClip);
 
 					// Map from -1..1 to 0..1
-					vertexA = (vertexA + 1.f) / 2.f;
-					vertexB = (vertexB + 1.f) / 2.f;
-					vertexC = (vertexC + 1.f) / 2.f;
+					vtxATransformed = (vtxATransformed + 1.f) / 2.f;
+					vtxBTransformed = (vtxBTransformed + 1.f) / 2.f;
+					vtxCTransformed = (vtxCTransformed + 1.f) / 2.f;
 
 					// Map to pixel space
-					const glm::vec2i A(vertexA.x * (ImageWidth - 1), vertexA.y * (ImageHeight - 1));
-					const glm::vec2i B(vertexB.x * (ImageWidth - 1), vertexB.y * (ImageHeight - 1));
-					const glm::vec2i C(vertexC.x * (ImageWidth - 1), vertexC.y * (ImageHeight - 1));
+					const glm::vec2i A(vtxATransformed.x * (ImageWidth - 1), vtxATransformed.y * (ImageHeight - 1));
+					const glm::vec2i B(vtxBTransformed.x * (ImageWidth - 1), vtxBTransformed.y * (ImageHeight - 1));
+					const glm::vec2i C(vtxCTransformed.x * (ImageWidth - 1), vtxCTransformed.y * (ImageHeight - 1));
 
 					DrawTriangle(A, B, C);
-					//DrawLine(start, end);
+					DrawLine(A, B, glm::vec4(0.f, 1.f, 0.f, 1.f));
+					DrawLine(B, C, glm::vec4(1.f, 0.f, 0.f, 1.f));
+					DrawLine(C, A, glm::vec4(0.f, 0.f, 1.f, 1.f));
+
 				}
 				++countTriangles;
 
@@ -263,14 +242,11 @@ void SoftwareRasterizer::DrawModelWireframe(const eastl::shared_ptr<Model3D>& in
 
 	const eastl::vector<TransformObjPtr>& modelChildren = inModel->GetChildren();
 
-#if USE_PROJECTION
 	const Transform& modelTrans = inModel->GetAbsoluteTransform();
 	const glm::mat4 absoluteMat = modelTrans.GetMatrix();
 	//const glm::mat4 projection = glm::orthoLH_ZO(-20.f, 20.f, -20.f, 20.f, 0.f, 20.f);
 	const glm::mat4 projection = glm::perspectiveLH_ZO(glm::radians(CAMERA_FOV), static_cast<float>(ImageWidth) / static_cast<float>(ImageHeight), CAMERA_NEAR, CAMERA_FAR);
 	// Object needs to be at + or - 120 to be drawn, why?
-#endif
-
 
 	for (uint32_t i = 0; i < modelChildren.size(); ++i)
 	{
@@ -330,56 +306,8 @@ void SoftwareRasterizer::DrawModelWireframe(const eastl::shared_ptr<Model3D>& in
 					const glm::vec3 currVtx = CPUVertices[currIndex].Position;
 					const glm::vec3 nextVtx = CPUVertices[nextIndex].Position;
 
-					glm::vec4 homCurrTransfVtx;
-					glm::vec3 currTranfsVtx;
-#if USE_PROJECTION
-					// Current vertex
-					{
-						homCurrTransfVtx = absoluteMat * glm::vec4(currVtx.x, currVtx.y, currVtx.z, 1.f);
-						homCurrTransfVtx = projection * homCurrTransfVtx;
-						const float hommCoordinate = homCurrTransfVtx.w;
-						if (hommCoordinate != 0)
-						{
-							homCurrTransfVtx /= hommCoordinate;
-						}
-						currTranfsVtx = glm::vec3(homCurrTransfVtx);
-
-						if (glm::isinf(currTranfsVtx.x) || glm::isinf(currTranfsVtx.y) || glm::isinf(currTranfsVtx.z))
-						{
-							__debugbreak();
-						}
-					}
-
-					glm::vec4 homNextTransfVtx;
-					glm::vec3 nextTranfsVtx;
-					// Next vertex
-					{
-
-						homNextTransfVtx = absoluteMat * glm::vec4(nextVtx.x, nextVtx.y, nextVtx.z, 1.f);
-						homNextTransfVtx = projection * homNextTransfVtx;
-						const float hommCoordinate = homNextTransfVtx.w;
-						// Gives an in when vtx is at -1, -1, -1 and pos at 1, 1, 1 because hommCoordinate is 0
-						if (hommCoordinate != 0)
-						{
-							homNextTransfVtx /= hommCoordinate;
-						}
-
-						nextTranfsVtx = glm::vec3(homNextTransfVtx);
-						
-						if (glm::isinf(nextTranfsVtx.x) || glm::isinf(nextTranfsVtx.y) || glm::isinf(nextTranfsVtx.z))
-						{
-							__debugbreak();
-						}
-
-					}
-#endif
-					//if (glm::isinf(currTranfsVtx.x) || glm::isinf(currTranfsVtx.y) || glm::isinf(currTranfsVtx.z) ||
-					//	 glm::isinf(nextTranfsVtx.x) || glm::isinf(nextTranfsVtx.y) || glm::isinf(nextTranfsVtx.z)
-					//	)
-					//{
-					//	__debugbreak();
-					//}
-
+					glm::vec3 currTranfsVtx = TransformPosition(currVtx, projection * absoluteMat);
+					glm::vec3 nextTranfsVtx = TransformPosition(nextVtx, projection * absoluteMat);
 
 					// Re-map from -1..1 to 0..1
 					const glm::vec3 remappedCurrVtx = (currTranfsVtx + 1.f) / 2.f;
@@ -589,14 +517,14 @@ void SoftwareRasterizer::DoTest()
 
 		//DrawPoint(B);
 
-		//DrawTriangle(A, B, C);
+		DrawTriangle(A, B, C);
 
 		//DrawLine(A, B, glm::vec4(0.f, 1.f, 0.f, 1.f));
 		//DrawLine(B, C, glm::vec4(0.f, 1.f, 0.f, 1.f));
 		//DrawLine(C, A, glm::vec4(0.f, 1.f, 0.f, 1.f));
 
 
-		DrawLine(glm::vec2i(10, -5), glm::vec2i(10, 10), glm::vec4(0.f, 1.f, 0.f, 1.f));
+		//DrawLine(glm::vec2i(10, -5), glm::vec2i(10, 10), glm::vec4(0.f, 1.f, 0.f, 1.f));
 		//DrawLine(glm::vec2i(10, -20), glm::vec2i(10, 50), glm::vec4(0.f, 1.f, 0.f, 1.f));
 	}
 
