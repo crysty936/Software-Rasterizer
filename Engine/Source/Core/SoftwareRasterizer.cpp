@@ -129,7 +129,7 @@ inline glm::vec3 TransformPosition(const glm::vec3& inVtx, const glm::mat4& inMa
 
 void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 {
-	static int32_t maxTriangles = 32;
+	static int32_t maxTriangles = 1;
 
 	{
 		ImGui::Begin("Software Rasterizer");
@@ -148,7 +148,6 @@ void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 
 	SceneManager& sManager = SceneManager::Get();
 	const Scene& currentScene = sManager.GetCurrentScene();
-	//const eastl::shared_ptr<Camera>& currentCamera = currentScene.GetCurrentCamera();
 	const glm::mat4 view = currentScene.GetMainCameraLookAt();
 
 	for (uint32_t i = 0; i < modelChildren.size(); ++i)
@@ -197,29 +196,34 @@ void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 				}
 
 				{
-					const glm::vec3 vtxA = CPUVertices[CPUIndices[idxStart]].Position;
-					const glm::vec3 vtxB = CPUVertices[CPUIndices[idxStart + 1]].Position;
-					const glm::vec3 vtxC = CPUVertices[CPUIndices[idxStart + 2]].Position;
+					const SimpleVertex& vtxA = CPUVertices[CPUIndices[idxStart]];
+					const SimpleVertex& vtxB = CPUVertices[CPUIndices[idxStart + 1]];
+					const SimpleVertex& vtxC = CPUVertices[CPUIndices[idxStart + 2]];
 
-					const glm::mat4 worldToClip = projection * view * absoluteMat;
-					glm::vec3 vtxATransformed = TransformPosition(vtxA, worldToClip);
-					glm::vec3 vtxBTransformed = TransformPosition(vtxB, worldToClip);
-					glm::vec3 vtxCTransformed = TransformPosition(vtxC, worldToClip);
+					const glm::vec3 vtxAPos = vtxA.Position;
+					const glm::vec3 vtxBPos = vtxB.Position;
+					const glm::vec3 vtxCPos = vtxC.Position;
+
+					const glm::mat4 worldToClip = /*projection * view **/ absoluteMat;
+
+					const glm::vec3 vtxATransformed = TransformPosition(vtxAPos, worldToClip);
+					const glm::vec3 vtxBTransformed = TransformPosition(vtxBPos, worldToClip);
+					const glm::vec3 vtxCTransformed = TransformPosition(vtxCPos, worldToClip);
 
 					// Map from -1..1 to 0..1
-					vtxATransformed = (vtxATransformed + 1.f) / 2.f;
-					vtxBTransformed = (vtxBTransformed + 1.f) / 2.f;
-					vtxCTransformed = (vtxCTransformed + 1.f) / 2.f;
+					const glm::vec3 vtxAScreenSpace = (vtxATransformed + 1.f) / 2.f;
+					const glm::vec3 vtxBScreenSpace = (vtxBTransformed + 1.f) / 2.f;
+					const glm::vec3 vtxCScreenSpace = (vtxCTransformed + 1.f) / 2.f;
 
 					// Map to pixel space
-					const glm::vec2i A(vtxATransformed.x * (ImageWidth - 1), vtxATransformed.y * (ImageHeight - 1));
-					const glm::vec2i B(vtxBTransformed.x * (ImageWidth - 1), vtxBTransformed.y * (ImageHeight - 1));
-					const glm::vec2i C(vtxCTransformed.x * (ImageWidth - 1), vtxCTransformed.y * (ImageHeight - 1));
+					const glm::vec2 A(vtxAScreenSpace.x * (ImageWidth - 1), vtxAScreenSpace.y * (ImageHeight - 1));
+					const glm::vec2 B(vtxBScreenSpace.x * (ImageWidth - 1), vtxBScreenSpace.y * (ImageHeight - 1));
+					const glm::vec2 C(vtxCScreenSpace.x * (ImageWidth - 1), vtxCScreenSpace.y * (ImageHeight - 1));
 
-					DrawTriangle(A, B, C);
-					DrawLine(A, B, glm::vec4(0.f, 1.f, 0.f, 1.f));
-					DrawLine(B, C, glm::vec4(1.f, 0.f, 0.f, 1.f));
-					DrawLine(C, A, glm::vec4(0.f, 0.f, 1.f, 1.f));
+					DrawTriangle({A, vtxATransformed.z, vtxA.Normal, vtxA.TexCoords}, { B, vtxBTransformed.z, vtxB.Normal, vtxB.TexCoords }, { C, vtxCTransformed.z, vtxC.Normal, vtxC.TexCoords });
+					//DrawLine(A, B, glm::vec4(0.f, 1.f, 0.f, 1.f));
+					//DrawLine(B, C, glm::vec4(1.f, 0.f, 0.f, 1.f));
+					//DrawLine(C, A, glm::vec4(0.f, 0.f, 1.f, 1.f));
 
 				}
 				++countTriangles;
@@ -229,6 +233,9 @@ void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 
 	}
 
+
+	// TODO: Barycentric coordinates
+	// Z Buffer: Write it from the pixel shader, but also test for existing one to use early z test
 }
 
 
@@ -320,7 +327,7 @@ void SoftwareRasterizer::DrawModelWireframe(const eastl::shared_ptr<Model3D>& in
 					const glm::vec3 remappedCurrVtx = (currTranfsVtx + 1.f) / 2.f;
 					const glm::vec3 remappedNextVtx = (nextTranfsVtx + 1.f) / 2.f;
 
-					// TODO: Barycentric coordinates to get pixel z and cull if behind camera
+					// TODO: Barycentric coordinates to get interpolate between vertex z and write to z buffer(to use for culling) and also remove if behind camera
 
 					// Re-map to pixel space
 					const glm::vec2i start(remappedCurrVtx.x * (ImageWidth - 1), remappedCurrVtx.y * (ImageHeight - 1));
@@ -448,28 +455,35 @@ inline int32_t Get2DCrossProductMagnitude(const glm::vec2i& A, const glm::vec2i&
 	return det;
 }
 
-void SoftwareRasterizer::DrawTriangle(const glm::vec2i& A, const glm::vec2i& B, const glm::vec2i& C)
+void SoftwareRasterizer::DrawTriangle(const RasterVertex& A, const RasterVertex& B, const RasterVertex& C)
 {
-	// bounding box
+	// Bounding Box
 	// draw inside of it and check if pixel is in using cross product method but for 2d vectors
 	// might also be possible to check using barycentric coordinates, need to check
 
-	AABB2Di box;
-	box += A;
-	box += B;
-	box += C;
+	AABB2D box;
+	box += A.Pos;
+	box += B.Pos;
+	box += C.Pos;
 
-	const glm::vec2i& min = box.Min;
-	const glm::vec2i& max = box.Max;
+	const glm::vec2& min = box.Min;
+	const glm::vec2& max = box.Max;
 	//const int32_t length = max.x - min.x;
 
-	const glm::vec2i AB = B - A;
-	const glm::vec2i BC = C - B;
-	const glm::vec2i CA = A - C;
+	const glm::vec2 AB = B.Pos - A.Pos;
+	const glm::vec2 BA = A.Pos - B.Pos;
+	const glm::vec2 BC = C.Pos - B.Pos;
+	const glm::vec2 CB = B.Pos - C.Pos;
+	const glm::vec2 CA = A.Pos - C.Pos;
 
-	for (int32_t i = min.y; i <= max.y; ++i)
+	const int32_t pixelMinY = static_cast<int32_t>(min.y);
+	const int32_t pixelMinX = static_cast<int32_t>(min.x);
+	const int32_t pixelMaxY = static_cast<int32_t>(max.y + 1.f); // Account for rounding down
+	const int32_t pixelMaxX = static_cast<int32_t>(max.x + 1.f);
+
+	for (int32_t i = pixelMinY; i <= pixelMaxY; ++i)
 	{
-		for (int32_t j = min.x; j <= max.x; ++j)
+		for (int32_t j = pixelMinX; j <= pixelMaxX; ++j)
 		{
 			int32_t pixelPos = 0;
 			if (!TryGetPixelPos(j, i, pixelPos))
@@ -477,29 +491,77 @@ void SoftwareRasterizer::DrawTriangle(const glm::vec2i& A, const glm::vec2i& B, 
 				continue;
 			}
 
-			const glm::vec2i P(j, i);
+			if (glm::vec2i(j, i) == glm::vec2i(C.Pos))
+			{
+				//__debugbreak();
+			}
+
+			const glm::vec2 P(j + 0.5f, i + 0.5f); // Move P to pixel center
+
 
 			// Check if inside triangle by checking cross product between edges and vectors made from edge origin to P
 			// Inside out test
-			const glm::vec2i AP = P - A;
-			if (Get2DCrossProductMagnitude(AB, AP) < 0)
-			{
-				continue;
-			}
-			const glm::vec2i BP = P - B;
-			if (Get2DCrossProductMagnitude(BC, BP) < 0)
-			{
-				continue;
-			}
+			const glm::vec2 AP = P - A.Pos;
+			const glm::vec2 PA = A.Pos - P;
 
-			const glm::vec2i CP = P - C;
-			if (Get2DCrossProductMagnitude(CA, CP) < 0)
+			// Barycentric coordinate at point A(weight A)
+			float wA = static_cast<float>(Get2DCrossProductMagnitude(AB, AP));
+			//float wA = -static_cast<float>(Get2DCrossProductMagnitude(BA, PA));
+			if (wA < 0.f)
 			{
 				continue;
 			}
 
+			const glm::vec2 BP = P - B.Pos;
+			//const glm::vec2 PB = B.Pos - P;
+			float wB = static_cast<float>(Get2DCrossProductMagnitude(BC, BP));
+			//float wB = -static_cast<float>(Get2DCrossProductMagnitude(CB, PB));
+			if (wB < 0.f)
+			{
+				continue;
+			}
 
-			FinalImageData[i * ImageWidth + j] = ConvertToRGBA(glm::vec4(1.f, 1.f, 1.f, 1.f));
+			const glm::vec2 CP = P - C.Pos;
+			float wC = static_cast<float>(Get2DCrossProductMagnitude(CA, CP));
+			//float wC = static_cast<float>(Get2DCrossProductMagnitude(CA, PC));
+			if (wC < 0)
+			{
+				continue;
+			}
+
+			// Note: Cross product length gives area of parallelogram and area of triangle is this values divided by 2
+			// But, since we use these only to get the barycentric coordinates, we only care about the ratio between them when all summed up give 1
+			// meaning that even if we divide everything by 2, result will be the same so we get rid of the needless divide
+
+
+			const float sum = wA + wB + wC;
+			wA /= sum;
+			wB /= sum;
+			wC /= sum;
+
+			wA = 1.f - wA;
+			wB = 1.f - wB;
+			wC = 1.f - wC;
+
+			const glm::vec3 AColor(A.TexCoords.x, A.TexCoords.y, 0.f);
+			const glm::vec3 BColor(B.TexCoords.x, B.TexCoords.y, 0.f);
+			const glm::vec3 CColor(C.TexCoords.x, C.TexCoords.y, 0.f);
+
+			//wA = glm::pow(wA, 8);
+
+			//const glm::vec3 finalColor = wA * AColor + wB * BColor /*+ wC * CColor*/;
+			const glm::vec3 finalColor = wA * glm::vec3(1.f, 1.f, 1.f);
+
+			FinalImageData[pixelPos] = ConvertToRGBA(glm::vec4(finalColor.x, finalColor.y, finalColor.z, 1.f));
+			DrawPoint(A.Pos);
+			//DrawPoint(A.Pos, glm::vec4(AColor.x, AColor.y, AColor.z, 1.f));
+			//DrawPoint(B.Pos);
+			//DrawPoint(B.Pos, glm::vec4(BColor.x, BColor.y, BColor.z, 1.f));
+
+
+			// TODO: Why Barycentric coordinates are wrong.
+			// Could find out total area using AB and AC and take into consideration area of only 2 edges and deduce the other using 1 - wA - wB.
+			// Maybe. There should be a way to isolate the case where 
 		}
 	}
 
@@ -524,7 +586,7 @@ void SoftwareRasterizer::DoTest()
 
 		//DrawPoint(B);
 
-		DrawTriangle(A, B, C);
+		//DrawTriangle(A, B, C);
 
 		//DrawLine(A, B, glm::vec4(0.f, 1.f, 0.f, 1.f));
 		//DrawLine(B, C, glm::vec4(0.f, 1.f, 0.f, 1.f));

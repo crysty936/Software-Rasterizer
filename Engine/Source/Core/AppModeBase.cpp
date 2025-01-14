@@ -101,8 +101,8 @@ const float CAMERA_FOV = 45.f;
 const float CAMERA_NEAR = 0.1f;
 const float CAMERA_FAR = 10000.f;
 
-const int32_t SoftRasterizerImgWidth = 800;
-const int32_t SoftRasterizerImgHeight = 600;
+const int32_t SoftRasterizerImgWidth = 16;
+const int32_t SoftRasterizerImgHeight = 12;
 SoftwareRasterizer Rasterizer;
 eastl::shared_ptr<D3D12Texture2DWritable> MainImage;
 eastl::shared_ptr<Model3D> MainModel;
@@ -195,10 +195,11 @@ void AppModeBase::CreateInitialResources()
 
 	// Models
 
-	MainModel = eastl::make_shared<CubeShape>("TheCube");
-	//MainModel = eastl::make_shared<SquareShape>("TheSquare");
+	//MainModel = eastl::make_shared<CubeShape>("TheCube");
+	MainModel = eastl::make_shared<SquareShape>("TheSquare");
 	MainModel->Init(m_commandList);
 	//MainModel->SetScale(glm::vec3(5.f, 5.f, 5.f));
+	MainModel->SetScale(glm::vec3(0.5f, 0.5f, 0.5f));
 
 	currentScene.AddObject(MainModel);
 

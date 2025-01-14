@@ -92,3 +92,30 @@ AABB2Di& AABB2Di::operator+=(const glm::vec2i& inVec)
 
 	return *this;
 }
+
+AABB2D& AABB2D::operator+=(const AABB2D& inAABB)
+{
+	*this += inAABB.Min;
+	*this += inAABB.Max;
+
+	return *this;
+}
+
+AABB2D& AABB2D::operator+=(const glm::vec2& inVec)
+{
+	if (IsInitialized)
+	{
+		Min.x = glm::min(Min.x, inVec.x);
+		Min.y = glm::min(Min.y, inVec.y);
+
+		Max.x = glm::max(Max.x, inVec.x);
+		Max.y = glm::max(Max.y, inVec.y);
+	}
+	else
+	{
+		Min = Max = inVec;
+		IsInitialized = true;
+	}
+
+	return *this;
+}

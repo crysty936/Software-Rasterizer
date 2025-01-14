@@ -32,6 +32,33 @@ private:
 	bool IsInitialized = false;
 };
 
+struct AABB2D
+{
+	glm::vec2 Min;
+	glm::vec2 Max;
+
+	AABB2D& operator +=(const AABB2D& inAABB);
+	AABB2D& operator +=(const glm::vec2& inVec);
+
+	inline glm::vec2 GetExtent() const
+	{
+		return (Max - Min) / 2.f;
+	}
+
+	inline void GetCenterAndExtent(OUT glm::vec2& outCenter, OUT glm::vec2& outExtent) const
+	{
+		outExtent = GetExtent();
+		outCenter = Min + outExtent;
+	}
+
+	//eastl::array<glm::vec3, 8> GetVertices() const;
+	//void DebugDraw() const;
+
+private:
+	bool IsInitialized = false;
+};
+
+
 struct AABB
 {
 	glm::vec3 Min;
