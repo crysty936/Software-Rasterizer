@@ -35,6 +35,7 @@ public:
 
 private:
 	uint32_t* FinalImageData = nullptr;
+	float* DepthData = nullptr;
 	glm::vec4* IntermediaryImageData = nullptr;
 	int32_t ImageWidth = 0;
 	int32_t ImageHeight = 0;

@@ -11,6 +11,7 @@
 #include "Math/AABB.h"
 #include "Scene/Scene.h"
 #include "Scene/SceneManager.h"
+#include <limits>
 
 static uint32_t ConvertToRGBA(const glm::vec4& color)
 {
@@ -45,6 +46,7 @@ void SoftwareRasterizer::Init(const int32_t inImageWidth, const int32_t inImageH
 
 	IntermediaryImageData = new glm::vec4[inImageWidth * inImageHeight];
 	FinalImageData = new uint32_t[inImageWidth * inImageHeight];
+	DepthData = new float[inImageWidth * inImageHeight];
 	ClearImage();
 }
 
@@ -320,6 +322,12 @@ void SoftwareRasterizer::PrepareBeforePresent()
 void SoftwareRasterizer::ClearImage()
 {
 	memset(FinalImageData, 0, ImageWidth * ImageHeight * 4);
+	// Workaround for windef macro causing compilation issues: https://stackoverflow.com/questions/1394132/macro-and-member-function-conflict
+	constexpr float maxDepth = (std::numeric_limits<float>::max)();
+	for (int32_t i = 0; i < ImageWidth * ImageHeight; ++i)
+	{
+		DepthData[i] = maxDepth;
+	}
 }
 
 bool SoftwareRasterizer::TryGetPixelPos(const int32_t X, const int32_t Y, int32_t& outPixelPos)
@@ -454,8 +462,6 @@ void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 
 	}
 
-
-	// TODO: Barycentric coordinates
 	// Z Buffer: Write it from the pixel shader, but also test for existing one to use early z test
 }
 
@@ -553,21 +559,34 @@ void SoftwareRasterizer::DrawTriangle(const RasterVertex& A, const RasterVertex&
 				continue;
 			}
 
+			// Perspective correct Z interpolation
+			// https://www.scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation/visibility-problem-depth-buffer-depth-interpolation.html
+
+			const float pixelDepth = 1.f / ((wA / A.Depth) + (wB / B.Depth) + (wC / C.Depth));
+
+			if (pixelDepth <= 0.f || pixelDepth> 1.f)
+			{
+				continue;
+			}
+
+			const float existingDepth = DepthData[pixelPos];
+			if (pixelDepth < existingDepth)
+			{
+				DepthData[pixelPos] = pixelDepth;
+			}
+			else
+			{
+				continue;
+			}
+
 			const glm::vec3 AColor(A.TexCoords.x, A.TexCoords.y, 0.f);
 			const glm::vec3 BColor(B.TexCoords.x, B.TexCoords.y, 0.f);
 			const glm::vec3 CColor(C.TexCoords.x, C.TexCoords.y, 0.f);
-
-			//wA = glm::pow(wA, 8);
 
 			const glm::vec3 finalColor = wA * AColor + wB * BColor + wC * CColor;
 			//const glm::vec3 finalColor = wA * glm::vec3(1.f, 1.f, 1.f);
 
 			FinalImageData[pixelPos] = ConvertToRGBA(glm::vec4(finalColor.x, finalColor.y, finalColor.z, 1.f));
-			
-			//DrawPoint(A.Pos);
-			//DrawPoint(A.Pos, glm::vec4(AColor.x, AColor.y, AColor.z, 1.f));
-			//DrawPoint(B.Pos);
-			//DrawPoint(B.Pos, glm::vec4(BColor.x, BColor.y, BColor.z, 1.f));
 		}
 	}
 

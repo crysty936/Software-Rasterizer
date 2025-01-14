@@ -199,7 +199,8 @@ void AppModeBase::CreateInitialResources()
 	//MainModel = eastl::make_shared<SquareShape>("TheSquare");
 	MainModel->Init(m_commandList);
 	//MainModel->SetScale(glm::vec3(5.f, 5.f, 5.f));
-	MainModel->SetScale(glm::vec3(0.5f, 0.5f, 0.5f));
+	//MainModel->SetScale(glm::vec3(0.5f, 0.5f, 0.5f));
+	MainModel->SetRelativeLocation(glm::vec3(0.f, 0.f, 10.f));
 
 	currentScene.AddObject(MainModel);
 
