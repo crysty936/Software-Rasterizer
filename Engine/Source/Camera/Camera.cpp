@@ -109,7 +109,7 @@ void Camera::OnMousePosChanged(const float inNewYaw, const float inNewPitch)
 	Rotate(-pitchOffset, glm::vec3(1.f, 0.f, 0.f));
 }
 
-glm::mat4 Camera::GetLookAt()
+glm::mat4 Camera::GetLookAt() const
 {
 // 	//https://www.3dgep.com/understanding-the-view-matrix/
 
@@ -183,5 +183,13 @@ glm::mat4 Camera::GetLookAt()
 
 	//const glm::mat4 viewMatrix = glm::inverse(GetAbsoluteTransform().GetMatrix());
  	//return viewMatrix;
+}
+
+glm::vec3 Camera::GetViewDir() const
+{
+	const Transform& absTransf = GetAbsoluteTransform();
+	const glm::vec3 viewDir = glm::normalize(absTransf.Rotation * glm::vec3(0.f, 0.f, 1.f));
+
+	return viewDir;
 }
 

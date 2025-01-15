@@ -400,28 +400,6 @@ void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 
 				const uint32_t idxStart = triangleIdx * 3;
 
-				// Backface cull
-				{
-					const glm::vec3 v0 = CPUVertices[CPUIndices[idxStart]].Position;
-					const glm::vec3 v1 = CPUVertices[CPUIndices[idxStart + 1]].Position;
-					const glm::vec3 v2 = CPUVertices[CPUIndices[idxStart + 2]].Position;
-
-					const glm::vec3 v0v1 = v1 - v0;
-					const glm::vec3 v0v2 = v2 - v0;
-
-					// LH CCW culling
-					const glm::vec3 trianglePlaneNormal = glm::normalize(glm::cross(v0v1, v0v2));
-					const glm::vec3 viewDir = glm::vec3(0.f, 0.f, 1.f);
-
-					const float dot = glm::dot(trianglePlaneNormal, viewDir);
-
-					if (dot < 0.f)
-					{
-						// Skip triangle
-						continue;
-					}
-				}
-
 				{
 					const SimpleVertex& vtxA = CPUVertices[CPUIndices[idxStart]];
 					const SimpleVertex& vtxB = CPUVertices[CPUIndices[idxStart + 1]];
@@ -446,6 +424,31 @@ void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 					const glm::vec2 A(vtxAScreenSpace.x * (ImageWidth - 1), vtxAScreenSpace.y * (ImageHeight - 1));
 					const glm::vec2 B(vtxBScreenSpace.x * (ImageWidth - 1), vtxBScreenSpace.y * (ImageHeight - 1));
 					const glm::vec2 C(vtxCScreenSpace.x * (ImageWidth - 1), vtxCScreenSpace.y * (ImageHeight - 1));
+
+					// Backface cull
+					{
+						const glm::vec3 v0 = vtxATransformed;
+						const glm::vec3 v1 = vtxBTransformed;
+						const glm::vec3 v2 = vtxCTransformed;
+
+
+						const glm::vec3 v0v1 = v1 - v0;
+						const glm::vec3 v0v2 = v2 - v0;
+
+						// LH CCW culling
+						const glm::vec3 trianglePlaneNormal = glm::normalize(glm::cross(v0v1, v0v2));
+						//const glm::vec3 viewDir = currentScene.GetCurrentCamera()->GetViewDir();
+						const glm::vec3 viewDir = view[2]; // Z axis of rotation
+
+						const float dot = glm::dot(trianglePlaneNormal, viewDir);
+
+						// Triangle is visible only when normal is pointing towards camera, so opposite of camera dir
+						if (dot > 0.f)
+						{
+							// Skip triangle
+							continue;
+						}
+					}
 
 					DrawTriangle({ A, vtxATransformed.z, vtxA.Normal, vtxA.TexCoords }, { B, vtxBTransformed.z, vtxB.Normal, vtxB.TexCoords }, { C, vtxCTransformed.z, vtxC.Normal, vtxC.TexCoords });
 					if (bDrawLines)
@@ -501,41 +504,8 @@ void SoftwareRasterizer::DrawTriangle(const RasterVertex& A, const RasterVertex&
 
 			const glm::vec2 P(j + 0.5f, i + 0.5f); // Move P to pixel center
 
-			// 1. Inside out test
-
-			// Check if inside triangle by checking cross product between edges and vectors made from edge origin to P
-			//const glm::vec2 AP = P - A.Pos;
-			//const glm::vec2 BA = A.Pos - B.Pos;
-
-			//const glm::vec2 BP = P - B.Pos;
-
-			//// Barycentric coordinate at point A(weight A)
-			//float wA = static_cast<float>(Get2DCrossProductMagnitude(AP, AB));
-			////float wA = -static_cast<float>(Get2DCrossProductMagnitude(BA, BP));
-			//if (wA <= 0.f)
-			//{
-			//	continue;
-			//}
-
-			//float wB = static_cast<float>(Get2DCrossProductMagnitude(BC, BP));
-			//if (wB <= 0.f)
-			//{
-			//	continue;
-			//}
-
-			//const glm::vec2 CP = P - C.Pos;
-			//float wC = static_cast<float>(Get2DCrossProductMagnitude(CA, CP));
-			//if (wC <= 0)
-			//{
-			//	continue;
-			//}
-
-			// This is, however, not very reliable for getting the barycentric coordinates
-
-
-			// 2. Derive barycentric coordinates and from those determine if pixel is in triangle
+			// Derive barycentric coordinates and from those determine if pixel is in triangle
 			// Formula in Drive document at Barycentric Coordiantes section
-			// This works much better and is faster
 
 			float wA, wB, wC;
 			// Cramer's rule for 2D vertices barycentric coordinates
@@ -569,15 +539,17 @@ void SoftwareRasterizer::DrawTriangle(const RasterVertex& A, const RasterVertex&
 				continue;
 			}
 
-			const float existingDepth = DepthData[pixelPos];
-			if (pixelDepth < existingDepth)
-			{
-				DepthData[pixelPos] = pixelDepth;
-			}
-			else
-			{
-				continue;
-			}
+			//const float existingDepth = DepthData[pixelPos];
+			//if (pixelDepth < existingDepth)
+			//{
+			//	DepthData[pixelPos] = pixelDepth;
+			//}
+			//else
+			//{
+			//	continue;
+			//}
+
+			// Why the fk does the front face triangle not get drawn
 
 			const glm::vec3 AColor(A.TexCoords.x, A.TexCoords.y, 0.f);
 			const glm::vec3 BColor(B.TexCoords.x, B.TexCoords.y, 0.f);

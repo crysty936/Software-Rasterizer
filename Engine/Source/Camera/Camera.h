@@ -22,7 +22,8 @@ public:
 	void Move(EMovementDirection inDirection, const float inSpeed = 0.1f);
 	void SetMovementDelegates(class ControllerBase& inController);
 	void OnMouseScrollChanged(const float inNewY);
-	glm::mat4 GetLookAt();
+	glm::mat4 GetLookAt() const;
+	glm::vec3 GetViewDir() const;
 
 private:
 	void OnMousePosChanged(const float inNewYaw, const float inNewPitch);
