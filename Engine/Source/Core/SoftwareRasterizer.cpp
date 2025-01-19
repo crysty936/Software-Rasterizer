@@ -329,6 +329,7 @@ void SoftwareRasterizer::PrepareBeforePresent()
 int32_t maxTriangles = 128;
 bool bDrawTriangleWireframe = false;
 bool bDrawOnlyBackfaceCulled = false;
+bool bUseZBuffer = true;
 
 void SoftwareRasterizer::BeginFrame()
 {
@@ -338,6 +339,7 @@ void SoftwareRasterizer::BeginFrame()
 		ImGui::SliderInt("Triangles to draw", &maxTriangles, 0, 32);
 		ImGui::Checkbox("Draw Triangle Wireframe", &bDrawTriangleWireframe);
 		ImGui::Checkbox("Draw Only Backface culled", &bDrawOnlyBackfaceCulled);
+		ImGui::Checkbox("Use Z-Buffer", &bUseZBuffer);
 		ImGui::End();
 	}
 
@@ -387,8 +389,8 @@ void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 	const Transform& modelTrans = inModel->GetAbsoluteTransform();
 	const glm::mat4 absoluteMat = modelTrans.GetMatrix();
 	const float orthoAABBHalfLength = 5.f;
-	const glm::mat4 projection = glm::orthoLH_ZO(-orthoAABBHalfLength, orthoAABBHalfLength, -orthoAABBHalfLength, orthoAABBHalfLength, 0.f, orthoAABBHalfLength * 2);
-	//const glm::mat4 projection = glm::perspectiveLH_ZO(glm::radians(CAMERA_FOV), static_cast<float>(ImageWidth) / static_cast<float>(ImageHeight), CAMERA_NEAR, CAMERA_FAR);
+	//const glm::mat4 projection = glm::orthoLH_ZO(-orthoAABBHalfLength, orthoAABBHalfLength, -orthoAABBHalfLength, orthoAABBHalfLength, 0.f, orthoAABBHalfLength * 2);
+	const glm::mat4 projection = glm::perspectiveLH_ZO(glm::radians(CAMERA_FOV), static_cast<float>(ImageWidth) / static_cast<float>(ImageHeight), CAMERA_NEAR, CAMERA_FAR);
 
 	SceneManager& sManager = SceneManager::Get();
 	const Scene& currentScene = sManager.GetCurrentScene();
@@ -454,7 +456,7 @@ void SoftwareRasterizer::DrawTriangle(const VtxShaderOutput& A, const VtxShaderO
 	const glm::vec3 B_NDC = HomDivide(B.ClipSpacePos);
 	const glm::vec3 C_NDC = HomDivide(C.ClipSpacePos);
 
-	//// Clip based on clip space coords defined by projection matrix
+	// Clip based on clip space coords defined by projection matrix
 	// TODO: This should split the triangle up when it is only partially in the clip space
 	//if (A_NDC.z < 0.f || A_NDC.z > 1.f || B_NDC.z < 0.f || B_NDC.z > 1.f || C_NDC.z < 0.f || C_NDC.z > 1.f)
 	//{
@@ -463,39 +465,39 @@ void SoftwareRasterizer::DrawTriangle(const VtxShaderOutput& A, const VtxShaderO
 
 	bool bCulled = false;
 	// Backface cull the triangle
-	{
-		const glm::vec3 v0 = A_NDC;
-		const glm::vec3 v1 = B_NDC;
-		const glm::vec3 v2 = C_NDC;
+	//{
+	//	const glm::vec3 v0 = A_NDC;
+	//	const glm::vec3 v1 = B_NDC;
+	//	const glm::vec3 v2 = C_NDC;
 
-		const glm::vec3 v0v1 = v1 - v0;
-		const glm::vec3 v0v2 = v2 - v0;
+	//	const glm::vec3 v0v1 = v1 - v0;
+	//	const glm::vec3 v0v2 = v2 - v0;
 
-		// LH CCW culling
-		const glm::vec3 trianglePlaneNormal = glm::normalize(glm::cross(v0v1, v0v2));
+	//	// LH CCW culling
+	//	const glm::vec3 trianglePlaneNormal = glm::normalize(glm::cross(v0v1, v0v2));
 
-		// CW
-		//const glm::vec3 trianglePlaneNormal = glm::normalize(glm::cross(v0v2, v0v1));
-		
-		//LOG_INFO("Triangle normal is %.2f, %.2f, %.2f", trianglePlaneNormal.x, trianglePlaneNormal.y, trianglePlaneNormal.z);
+	//	// CW
+	//	//const glm::vec3 trianglePlaneNormal = glm::normalize(glm::cross(v0v2, v0v1));
+	//	
+	//	//LOG_INFO("Triangle normal is %.2f, %.2f, %.2f", trianglePlaneNormal.x, trianglePlaneNormal.y, trianglePlaneNormal.z);
 
-		const float dot = glm::dot(trianglePlaneNormal, glm::vec3(0.f, 0.f, -1.f));
-		// dot for dir from cam to vertex with triangle normal, dir cam to vert is v0 - camLoc, camLoc is origin (0,0,0) in viewSpace, so just v0
-		//const float dot = glm::dot(trianglePlaneNormal, v0);
+	//	const float dot = glm::dot(trianglePlaneNormal, glm::vec3(0.f, 0.f, 1.f));
+	//	// dot for dir from cam to vertex with triangle normal, dir cam to vert is v0 - camLoc, camLoc is origin (0,0,0) in viewSpace, so just v0
+	//	//const float dot = glm::dot(trianglePlaneNormal, v0);
 
-		//LOG_INFO("Dot product is %.2f", dot);
+	//	//LOG_INFO("Dot product is %.2f", dot);
 
-		// Triangle is visible only when normal is pointing towards camera, so opposite of camera dir
-		if (dot >= 0.f)
-		{
-			// Skip triangle
-			bCulled = true;
-			if (!bDrawTriangleWireframe)
-			{
-				return;
-			}
-		}
-	}
+	//	// Triangle is visible only when normal is pointing towards camera, so opposite of camera dir
+	//	if (dot >= 0.f)
+	//	{
+	//		// Skip triangle
+	//		bCulled = true;
+	//		if (!bDrawOnlyBackfaceCulled)
+	//		{
+	//			return;
+	//		}
+	//	}
+	//}
 
 	// Map from -1..1 to 0..1 (Screen Space)
 	const glm::vec3 vtxAScreenSpace = (A_NDC + 1.f) / 2.f;
@@ -574,32 +576,45 @@ void SoftwareRasterizer::DrawTriangle(const VtxShaderOutput& A, const VtxShaderO
 				continue;
 			}
 
-			// Perspective correct Z interpolation
-			// https://www.scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation/visibility-problem-depth-buffer-depth-interpolation.html
-			// ! This is to interpolate camera space z, not post perspective divide z
-			// Maybe
-			// Or maybe it's impossible to get the right z without it bcs there's no guarantee that the z which this results from this is the actual correct that would have come 
+			// Depth of a fragment does not vary linearly in window coordinates. So we can not linearly interpolate to get the correct depth
+			// This is why we need to get depth in clip space.
+			// 
 			//const float 1.f / pixelDepth = ((1.f / A.Depth) * wA) + ((1.f / B.Depth) * wB) + ((1.f / C.Depth) * wC);
 			// = const float pixelDepth = 1.f / ((wA / A.Depth) + (wB / B.Depth) + (wC / C.Depth));
 
+			float pixelDepth = 1.f / ((wA / A.ClipSpacePos.z) + (wB / B.ClipSpacePos.z) + (wC / C.ClipSpacePos.z));
+			// Probably not right as z is correct but this is probably not the right formula to interpolate W
+			// Have to use clip space barycentrics
+			//const float pixelHom = 1.f / ((wA / A.ClipSpacePos.w) + (wB / B.ClipSpacePos.w) + (wC / C.ClipSpacePos.w));
+			//pixelDepth /= pixelHom;
+
+
+			// Very wrong
 			//const float pixelDepth = wA * A.Depth + wB * B.Depth + wC * C.Depth;
+
+
+
+
+
 
 			//if (pixelDepth <= 0.f || pixelDepth> 1.f)
 			//{
 			//	continue;
 			//}
 
-			//const float existingDepth = DepthData[pixelPos];
-			//if (pixelDepth < existingDepth)
-			//{
-			//	DepthData[pixelPos] = pixelDepth;
-			//}
-			//else
-			//{
-			//	continue;
-			//}
 
-			// Why the fk does the front face triangle not get drawn
+			if (bUseZBuffer)
+			{
+				const float existingDepth = DepthData[pixelPos];
+				if (pixelDepth < existingDepth)
+				{
+					DepthData[pixelPos] = pixelDepth;
+				}
+				else
+				{
+					continue;
+				}
+			}
 
 			const glm::vec3 AColor(A.TexCoords.x, A.TexCoords.y, 0.f);
 			const glm::vec3 BColor(B.TexCoords.x, B.TexCoords.y, 0.f);

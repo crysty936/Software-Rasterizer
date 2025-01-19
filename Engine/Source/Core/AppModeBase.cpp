@@ -200,7 +200,7 @@ void AppModeBase::CreateInitialResources()
 	MainModel->Init(m_commandList);
 	//MainModel->SetScale(glm::vec3(5.f, 5.f, 5.f));
 	//MainModel->SetScale(glm::vec3(1.f, 1.f, 0.5f));
-	//MainModel->SetRelativeLocation(glm::vec3(0.f, 0.f, 1.f));
+	MainModel->SetRelativeLocation(glm::vec3(0.f, 0.f, 10.f));
 
 	currentScene.AddObject(MainModel);
 
