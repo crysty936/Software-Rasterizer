@@ -199,8 +199,8 @@ void AppModeBase::CreateInitialResources()
 	//MainModel = eastl::make_shared<SquareShape>("TheSquare");
 	MainModel->Init(m_commandList);
 	//MainModel->SetScale(glm::vec3(5.f, 5.f, 5.f));
-	//MainModel->SetScale(glm::vec3(0.5f, 0.5f, 0.5f));
-	MainModel->SetRelativeLocation(glm::vec3(0.f, 0.f, 10.f));
+	//MainModel->SetScale(glm::vec3(1.f, 1.f, 0.5f));
+	//MainModel->SetRelativeLocation(glm::vec3(0.f, 0.f, 1.f));
 
 	currentScene.AddObject(MainModel);
 
@@ -420,10 +420,10 @@ void AppModeBase::BeginFrame()
 		ImGui::Begin("App Mode Rasterizer Options");
 		static bool bDrawWireframe = true;
 
-		ImGui::Checkbox("Draw Wireframe", &bDrawWireframe);
+		ImGui::Checkbox("Draw Model Wireframe", &bDrawWireframe);
 
 
-		Rasterizer.ClearImage();
+		Rasterizer.BeginFrame();
 		//Rasterizer.DoTest();
 
 		//if (bDrawWireframe)

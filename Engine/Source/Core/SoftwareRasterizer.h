@@ -18,18 +18,18 @@ public:
 	void bresenhamFull(int x1, int y1, int x2, int y2);
 	uint32_t* GetImage();
 	void PrepareBeforePresent();
-	void ClearImage();
+	void BeginFrame();
+	void ClearImageBuffers();
 	inline bool TryGetPixelPos(const int32_t X, const int32_t Y, int32_t& outPixelPos);
 
-	struct RasterVertex
+	struct VtxShaderOutput
 	{
-		glm::vec2 Pos;
-		float Depth = 0;
+		glm::vec4 ClipSpacePos;
 		glm::vec3 Normal;
 		glm::vec2 TexCoords;
 	};
 
-	void DrawTriangle(const RasterVertex& A, const RasterVertex& B, const RasterVertex& C);
+	void DrawTriangle(const VtxShaderOutput& A, const VtxShaderOutput& B, const VtxShaderOutput& C);
 	void DrawPoint(const glm::vec2i& inPoint, const glm::vec4& inColor = glm::vec4(1.f, 1.f, 1.f, 1.f));
 	void DoTest();
 

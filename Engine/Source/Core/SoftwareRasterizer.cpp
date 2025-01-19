@@ -47,7 +47,8 @@ void SoftwareRasterizer::Init(const int32_t inImageWidth, const int32_t inImageH
 	IntermediaryImageData = new glm::vec4[inImageWidth * inImageHeight];
 	FinalImageData = new uint32_t[inImageWidth * inImageHeight];
 	DepthData = new float[inImageWidth * inImageHeight];
-	ClearImage();
+
+	ClearImageBuffers();
 }
 
 SoftwareRasterizer::~SoftwareRasterizer()
@@ -114,19 +115,25 @@ const float CAMERA_FOV = 45.f;
 const float CAMERA_NEAR = 0.1f;
 const float CAMERA_FAR = 100.f;
 
-inline glm::vec3 TransformPosition(const glm::vec3& inVtx, const glm::mat4& inMat)
+inline glm::vec4 TransformPosition(const glm::vec3& inVtx, const glm::mat4& inMat)
 {
 	glm::vec4 vtxTransformed = inMat * glm::vec4(inVtx.x, inVtx.y, inVtx.z, 1.f);
 
-	const float hommCoordinate = vtxTransformed.w;
+	return vtxTransformed;
+}
+
+inline glm::vec3 HomDivide(const glm::vec4& inHomCoordinates)
+{
+	glm::vec3 out = glm::vec3(inHomCoordinates);
+	const float hommCoordinate = inHomCoordinates.w;
 	// Persp divide
 	// Can give divide by 0 when vtx is on near plane as dist is 0 then
 	if (hommCoordinate != 0)
 	{
-		vtxTransformed /= hommCoordinate;
+		out /= hommCoordinate;
 	}
 
-	return glm::vec3(vtxTransformed);
+	return out;
 }
 
 void SoftwareRasterizer::DrawModelWireframe(const eastl::shared_ptr<Model3D>& inModel)
@@ -210,8 +217,8 @@ void SoftwareRasterizer::DrawModelWireframe(const eastl::shared_ptr<Model3D>& in
 					const glm::vec3 currVtx = CPUVertices[currIndex].Position;
 					const glm::vec3 nextVtx = CPUVertices[nextIndex].Position;
 
-					glm::vec3 currTranfsVtx = TransformPosition(currVtx, projection * absoluteMat);
-					glm::vec3 nextTranfsVtx = TransformPosition(nextVtx, projection * absoluteMat);
+					glm::vec3 currTranfsVtx = HomDivide(TransformPosition(currVtx, projection * absoluteMat));
+					glm::vec3 nextTranfsVtx = HomDivide(TransformPosition(nextVtx, projection * absoluteMat));
 
 					// Re-map from -1..1 to 0..1
 					const glm::vec3 remappedCurrVtx = (currTranfsVtx + 1.f) / 2.f;
@@ -319,7 +326,25 @@ void SoftwareRasterizer::PrepareBeforePresent()
 	TransposeImage();
 }
 
-void SoftwareRasterizer::ClearImage()
+int32_t maxTriangles = 128;
+bool bDrawTriangleWireframe = false;
+bool bDrawOnlyBackfaceCulled = false;
+
+void SoftwareRasterizer::BeginFrame()
+{
+	// ImGui
+	{
+		ImGui::Begin("Software Rasterizer");
+		ImGui::SliderInt("Triangles to draw", &maxTriangles, 0, 32);
+		ImGui::Checkbox("Draw Triangle Wireframe", &bDrawTriangleWireframe);
+		ImGui::Checkbox("Draw Only Backface culled", &bDrawOnlyBackfaceCulled);
+		ImGui::End();
+	}
+
+	ClearImageBuffers();
+}
+
+void SoftwareRasterizer::ClearImageBuffers()
 {
 	memset(FinalImageData, 0, ImageWidth * ImageHeight * 4);
 	// Workaround for windef macro causing compilation issues: https://stackoverflow.com/questions/1394132/macro-and-member-function-conflict
@@ -351,18 +376,9 @@ inline int32_t Get2DCrossProductMagnitude(const glm::vec2i& A, const glm::vec2i&
 	return det;
 }
 
-
 void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 {
-	static int32_t maxTriangles = 128;
-	static bool bDrawLines = false;
 
-	{
-		ImGui::Begin("Software Rasterizer");
-		ImGui::SliderInt("Triangles to draw", &maxTriangles, 0, 32);
-		ImGui::Checkbox("Draw Lines", &bDrawLines);
-		ImGui::End();
-	}
 
 	int32_t countTriangles = 0;
 
@@ -370,8 +386,9 @@ void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 
 	const Transform& modelTrans = inModel->GetAbsoluteTransform();
 	const glm::mat4 absoluteMat = modelTrans.GetMatrix();
-	//const glm::mat4 projection = glm::orthoLH_ZO(-20.f, 20.f, -20.f, 20.f, 0.f, 20.f);
-	const glm::mat4 projection = glm::perspectiveLH_ZO(glm::radians(CAMERA_FOV), static_cast<float>(ImageWidth) / static_cast<float>(ImageHeight), CAMERA_NEAR, CAMERA_FAR);
+	const float orthoAABBHalfLength = 5.f;
+	const glm::mat4 projection = glm::orthoLH_ZO(-orthoAABBHalfLength, orthoAABBHalfLength, -orthoAABBHalfLength, orthoAABBHalfLength, 0.f, orthoAABBHalfLength * 2);
+	//const glm::mat4 projection = glm::perspectiveLH_ZO(glm::radians(CAMERA_FOV), static_cast<float>(ImageWidth) / static_cast<float>(ImageHeight), CAMERA_NEAR, CAMERA_FAR);
 
 	SceneManager& sManager = SceneManager::Get();
 	const Scene& currentScene = sManager.GetCurrentScene();
@@ -400,6 +417,8 @@ void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 
 				const uint32_t idxStart = triangleIdx * 3;
 
+				// Vtx Shader
+				// Outputs clip space
 				{
 					const SimpleVertex& vtxA = CPUVertices[CPUIndices[idxStart]];
 					const SimpleVertex& vtxB = CPUVertices[CPUIndices[idxStart + 1]];
@@ -410,53 +429,16 @@ void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 					const glm::vec3 vtxCPos = vtxC.Position;
 
 					const glm::mat4 worldToClip = projection * view * absoluteMat;
+					//const glm::mat4 worldToClip = glm::mat4(1.f);
 
-					const glm::vec3 vtxATransformed = TransformPosition(vtxAPos, worldToClip);
-					const glm::vec3 vtxBTransformed = TransformPosition(vtxBPos, worldToClip);
-					const glm::vec3 vtxCTransformed = TransformPosition(vtxCPos, worldToClip);
+					const glm::vec4 vtxAClipsSpace = TransformPosition(vtxAPos, worldToClip);
+					const glm::vec4 vtxBClipSpace = TransformPosition(vtxBPos, worldToClip);
+					const glm::vec4 vtxCClipSpace = TransformPosition(vtxCPos, worldToClip);
 
-					// Map from -1..1 to 0..1
-					const glm::vec3 vtxAScreenSpace = (vtxATransformed + 1.f) / 2.f;
-					const glm::vec3 vtxBScreenSpace = (vtxBTransformed + 1.f) / 2.f;
-					const glm::vec3 vtxCScreenSpace = (vtxCTransformed + 1.f) / 2.f;
+					//const glm::vec3 viewDir = currentScene.GetCurrentCamera()->GetViewDir();
+					const glm::vec3 viewDir = view[2]; // Z axis of rotation
 
-					// Map to pixel space
-					const glm::vec2 A(vtxAScreenSpace.x * (ImageWidth - 1), vtxAScreenSpace.y * (ImageHeight - 1));
-					const glm::vec2 B(vtxBScreenSpace.x * (ImageWidth - 1), vtxBScreenSpace.y * (ImageHeight - 1));
-					const glm::vec2 C(vtxCScreenSpace.x * (ImageWidth - 1), vtxCScreenSpace.y * (ImageHeight - 1));
-
-					// Backface cull
-					{
-						const glm::vec3 v0 = vtxATransformed;
-						const glm::vec3 v1 = vtxBTransformed;
-						const glm::vec3 v2 = vtxCTransformed;
-
-
-						const glm::vec3 v0v1 = v1 - v0;
-						const glm::vec3 v0v2 = v2 - v0;
-
-						// LH CCW culling
-						const glm::vec3 trianglePlaneNormal = glm::normalize(glm::cross(v0v1, v0v2));
-						//const glm::vec3 viewDir = currentScene.GetCurrentCamera()->GetViewDir();
-						const glm::vec3 viewDir = view[2]; // Z axis of rotation
-
-						const float dot = glm::dot(trianglePlaneNormal, viewDir);
-
-						// Triangle is visible only when normal is pointing towards camera, so opposite of camera dir
-						if (dot > 0.f)
-						{
-							// Skip triangle
-							continue;
-						}
-					}
-
-					DrawTriangle({ A, vtxATransformed.z, vtxA.Normal, vtxA.TexCoords }, { B, vtxBTransformed.z, vtxB.Normal, vtxB.TexCoords }, { C, vtxCTransformed.z, vtxC.Normal, vtxC.TexCoords });
-					if (bDrawLines)
-					{
-						DrawLine(A, B, glm::vec4(0.f, 1.f, 0.f, 1.f));
-						DrawLine(B, C, glm::vec4(1.f, 0.f, 0.f, 1.f));
-						DrawLine(C, A, glm::vec4(0.f, 0.f, 1.f, 1.f));
-					}
+					DrawTriangle({ vtxAClipsSpace, vtxA.Normal, vtxA.TexCoords }, { vtxBClipSpace, vtxB.Normal, vtxB.TexCoords }, { vtxCClipSpace, vtxC.Normal, vtxC.TexCoords });
 				}
 				++countTriangles;
 
@@ -464,27 +446,90 @@ void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 		}
 
 	}
-
-	// Z Buffer: Write it from the pixel shader, but also test for existing one to use early z test
 }
 
-void SoftwareRasterizer::DrawTriangle(const RasterVertex& A, const RasterVertex& B, const RasterVertex& C)
+void SoftwareRasterizer::DrawTriangle(const VtxShaderOutput& A, const VtxShaderOutput& B, const VtxShaderOutput& C)
 {
+	const glm::vec3 A_NDC = HomDivide(A.ClipSpacePos);
+	const glm::vec3 B_NDC = HomDivide(B.ClipSpacePos);
+	const glm::vec3 C_NDC = HomDivide(C.ClipSpacePos);
+
+	//// Clip based on clip space coords defined by projection matrix
+	// TODO: This should split the triangle up when it is only partially in the clip space
+	//if (A_NDC.z < 0.f || A_NDC.z > 1.f || B_NDC.z < 0.f || B_NDC.z > 1.f || C_NDC.z < 0.f || C_NDC.z > 1.f)
+	//{
+	//	return;
+	//}
+
+	bool bCulled = false;
+	// Backface cull the triangle
+	{
+		const glm::vec3 v0 = A_NDC;
+		const glm::vec3 v1 = B_NDC;
+		const glm::vec3 v2 = C_NDC;
+
+		const glm::vec3 v0v1 = v1 - v0;
+		const glm::vec3 v0v2 = v2 - v0;
+
+		// LH CCW culling
+		const glm::vec3 trianglePlaneNormal = glm::normalize(glm::cross(v0v1, v0v2));
+
+		// CW
+		//const glm::vec3 trianglePlaneNormal = glm::normalize(glm::cross(v0v2, v0v1));
+		
+		//LOG_INFO("Triangle normal is %.2f, %.2f, %.2f", trianglePlaneNormal.x, trianglePlaneNormal.y, trianglePlaneNormal.z);
+
+		const float dot = glm::dot(trianglePlaneNormal, glm::vec3(0.f, 0.f, -1.f));
+		// dot for dir from cam to vertex with triangle normal, dir cam to vert is v0 - camLoc, camLoc is origin (0,0,0) in viewSpace, so just v0
+		//const float dot = glm::dot(trianglePlaneNormal, v0);
+
+		//LOG_INFO("Dot product is %.2f", dot);
+
+		// Triangle is visible only when normal is pointing towards camera, so opposite of camera dir
+		if (dot >= 0.f)
+		{
+			// Skip triangle
+			bCulled = true;
+			if (!bDrawTriangleWireframe)
+			{
+				return;
+			}
+		}
+	}
+
+	// Map from -1..1 to 0..1 (Screen Space)
+	const glm::vec3 vtxAScreenSpace = (A_NDC + 1.f) / 2.f;
+	const glm::vec3 vtxBScreenSpace = (B_NDC + 1.f) / 2.f;
+	const glm::vec3 vtxCScreenSpace = (C_NDC + 1.f) / 2.f;
+
+	// Map to pixel space
+	const glm::vec2 A_PS(vtxAScreenSpace.x * (ImageWidth - 1), vtxAScreenSpace.y * (ImageHeight - 1));
+	const glm::vec2 B_PS(vtxBScreenSpace.x * (ImageWidth - 1), vtxBScreenSpace.y * (ImageHeight - 1));
+	const glm::vec2 C_PS(vtxCScreenSpace.x * (ImageWidth - 1), vtxCScreenSpace.y * (ImageHeight - 1));
+
+	if (bDrawTriangleWireframe)
+	{
+		DrawLine(A_PS, B_PS, glm::vec4(0.f, 1.f, 0.f, 1.f));
+		DrawLine(B_PS, C_PS, glm::vec4(1.f, 0.f, 0.f, 1.f));
+		DrawLine(C_PS, A_PS, glm::vec4(0.f, 0.f, 1.f, 1.f));
+	}
+
+
 	// Bounding Box
 	// draw inside of it and check if pixel is in using cross product method but for 2d vectors
 	// might also be possible to check using barycentric coordinates, need to check
 
 	AABB2D box;
-	box += A.Pos;
-	box += B.Pos;
-	box += C.Pos;
+	box += A_PS;
+	box += B_PS;
+	box += C_PS;
 
 	const glm::vec2& min = box.Min;
 	const glm::vec2& max = box.Max;
 
-	const glm::vec2 AB = B.Pos - A.Pos;
-	const glm::vec2 BC = C.Pos - B.Pos;
-	const glm::vec2 CA = A.Pos - C.Pos;
+	const glm::vec2 AB = B_PS - A_PS;
+	const glm::vec2 BC = C_PS - B_PS;
+	const glm::vec2 CA = A_PS - C_PS;
 
 	const int32_t pixelMinY = static_cast<int32_t>(min.y);
 	const int32_t pixelMinX = static_cast<int32_t>(min.x);
@@ -510,9 +555,9 @@ void SoftwareRasterizer::DrawTriangle(const RasterVertex& A, const RasterVertex&
 			float wA, wB, wC;
 			// Cramer's rule for 2D vertices barycentric coordinates
 			{
-				const glm::vec2 V0 = B.Pos - A.Pos;
-				const glm::vec2 V1 = C.Pos - A.Pos;
-				const glm::vec2 V2 = P - A.Pos;
+				const glm::vec2 V0 = B_PS - A_PS;
+				const glm::vec2 V1 = C_PS - A_PS;
+				const glm::vec2 V2 = P - A_PS;
 
 				const float det = V0.x * V1.y - V1.x * V0.y;
 
@@ -531,13 +576,18 @@ void SoftwareRasterizer::DrawTriangle(const RasterVertex& A, const RasterVertex&
 
 			// Perspective correct Z interpolation
 			// https://www.scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation/visibility-problem-depth-buffer-depth-interpolation.html
+			// ! This is to interpolate camera space z, not post perspective divide z
+			// Maybe
+			// Or maybe it's impossible to get the right z without it bcs there's no guarantee that the z which this results from this is the actual correct that would have come 
+			//const float 1.f / pixelDepth = ((1.f / A.Depth) * wA) + ((1.f / B.Depth) * wB) + ((1.f / C.Depth) * wC);
+			// = const float pixelDepth = 1.f / ((wA / A.Depth) + (wB / B.Depth) + (wC / C.Depth));
 
-			const float pixelDepth = 1.f / ((wA / A.Depth) + (wB / B.Depth) + (wC / C.Depth));
+			//const float pixelDepth = wA * A.Depth + wB * B.Depth + wC * C.Depth;
 
-			if (pixelDepth <= 0.f || pixelDepth> 1.f)
-			{
-				continue;
-			}
+			//if (pixelDepth <= 0.f || pixelDepth> 1.f)
+			//{
+			//	continue;
+			//}
 
 			//const float existingDepth = DepthData[pixelPos];
 			//if (pixelDepth < existingDepth)
@@ -558,7 +608,18 @@ void SoftwareRasterizer::DrawTriangle(const RasterVertex& A, const RasterVertex&
 			const glm::vec3 finalColor = wA * AColor + wB * BColor + wC * CColor;
 			//const glm::vec3 finalColor = wA * glm::vec3(1.f, 1.f, 1.f);
 
-			FinalImageData[pixelPos] = ConvertToRGBA(glm::vec4(finalColor.x, finalColor.y, finalColor.z, 1.f));
+
+			if (bDrawOnlyBackfaceCulled)
+			{
+				if (bCulled)
+				{
+					FinalImageData[pixelPos] = ConvertToRGBA(glm::vec4(1.f, 0.f, 0.f, 1.f));
+				}
+			}
+			else
+			{
+				FinalImageData[pixelPos] = ConvertToRGBA(glm::vec4(finalColor.x, finalColor.y, finalColor.z, 1.f));
+			}
 		}
 	}
 
@@ -583,7 +644,7 @@ void SoftwareRasterizer::DoTest()
 
 		//DrawPoint(B);
 
-		DrawTriangle(RasterVertex{ A, 0.f, glm::vec3(0.f, 0.f, 0.f), glm::vec2(0.f, 0.f) }, RasterVertex{ B, 0.f, glm::vec3(0.f, 0.f, 0.f), glm::vec2(0.f, 0.f) }, RasterVertex{ C, 0.f, glm::vec3(0.f, 0.f, 0.f), glm::vec2(0.f, 0.f) });
+		//DrawTriangle(VtxShaderOutput{ A, 0.f, glm::vec3(0.f, 0.f, 0.f), glm::vec2(0.f, 0.f) }, VtxShaderOutput{ B, 0.f, glm::vec3(0.f, 0.f, 0.f), glm::vec2(0.f, 0.f) }, VtxShaderOutput{ C, 0.f, glm::vec3(0.f, 0.f, 0.f), glm::vec2(0.f, 0.f) });
 
 		//DrawLine(A, B, glm::vec4(0.f, 1.f, 0.f, 1.f));
 		//DrawLine(B, C, glm::vec4(0.f, 1.f, 0.f, 1.f));
