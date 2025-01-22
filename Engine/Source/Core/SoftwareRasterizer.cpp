@@ -392,6 +392,11 @@ void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 	//const glm::mat4 projection = glm::orthoLH_ZO(-orthoAABBHalfLength, orthoAABBHalfLength, -orthoAABBHalfLength, orthoAABBHalfLength, 0.f, orthoAABBHalfLength * 2);
 	const glm::mat4 projection = glm::perspectiveLH_ZO(glm::radians(CAMERA_FOV), static_cast<float>(ImageWidth) / static_cast<float>(ImageHeight), CAMERA_NEAR, CAMERA_FAR);
 
+	//const glm::mat4 perspTest = glm::perspectiveLH_ZO(glm::radians(CAMERA_FOV), static_cast<float>(ImageWidth) / static_cast<float>(ImageHeight), 1.f, 3.f);
+	//const glm::vec4 t1 = glm::vec4(0.f, 0.f, 2.f, 1.f);
+	//const glm::vec4 t2 = perspTest * t1;
+	//const glm::vec4 t3 = t2 / t2.w;
+
 	SceneManager& sManager = SceneManager::Get();
 	const Scene& currentScene = sManager.GetCurrentScene();
 	const glm::mat4 view = currentScene.GetMainCameraLookAt();
@@ -535,7 +540,7 @@ void SoftwareRasterizer::DrawTriangle(const VtxShaderOutput& A, const VtxShaderO
 
 	const int32_t pixelMinY = static_cast<int32_t>(min.y);
 	const int32_t pixelMinX = static_cast<int32_t>(min.x);
-	const int32_t pixelMaxY = static_cast<int32_t>(max.y); // Account for rounding down
+	const int32_t pixelMaxY = static_cast<int32_t>(max.y);
 	const int32_t pixelMaxX = static_cast<int32_t>(max.x);
 
 	for (int32_t i = pixelMinY; i <= pixelMaxY; ++i)
@@ -576,39 +581,49 @@ void SoftwareRasterizer::DrawTriangle(const VtxShaderOutput& A, const VtxShaderO
 				continue;
 			}
 
-			// Depth of a fragment does not vary linearly in window coordinates. So we can not linearly interpolate to get the correct depth
-			// This is why we need to get depth in clip space.
-			// 
-			//const float 1.f / pixelDepth = ((1.f / A.Depth) * wA) + ((1.f / B.Depth) * wB) + ((1.f / C.Depth) * wC);
-			// = const float pixelDepth = 1.f / ((wA / A.Depth) + (wB / B.Depth) + (wC / C.Depth));
+			// x, y, z can be linearly interpolated in screen space using screen space derived barycentrics.
+			// However, nothing that's in camera space can be derived using just the screen space derived barycentrics
+			// For that we need the camera space z.
+			
+			const float ndcDepth = (wA * A_NDC.z) + (wB * B_NDC.z) + (wC * C_NDC.z);
+			const float pixelCameraSpaceDepth = 1.f / ((wA / A.ClipSpacePos.w) + (wB / B.ClipSpacePos.w) + (wC / C.ClipSpacePos.w)); // Depth in camera space, 
+			// we need this because this for everything else because this is what gets used to do the perspective divide
 
-			float pixelDepth = 1.f / ((wA / A.ClipSpacePos.z) + (wB / B.ClipSpacePos.z) + (wC / C.ClipSpacePos.z));
-			// Probably not right as z is correct but this is probably not the right formula to interpolate W
-			// Have to use clip space barycentrics
-			//const float pixelHom = 1.f / ((wA / A.ClipSpacePos.w) + (wB / B.ClipSpacePos.w) + (wC / C.ClipSpacePos.w));
-			//pixelDepth /= pixelHom;
-
-
-			// Very wrong
-			//const float pixelDepth = wA * A.Depth + wB * B.Depth + wC * C.Depth;
-
+			
+			// Divide texcoords by z, to "transform them to post perspective divide space"
+			// Then, multiply by the new z to get back the standard space value.
+			// Could also be explained as "x * 1/z is linear across the screen space interpolation)
+			glm::vec2 texCoordsPerspInterp = wA * (A.TexCoords / A.ClipSpacePos.w) + wB * (B.TexCoords / B.ClipSpacePos.w) + wC *(C.TexCoords / C.ClipSpacePos.w);
+			texCoordsPerspInterp *= pixelCameraSpaceDepth;
 
 
+			// To get any other coordinate of the current pixel, we can just linearly interpolate it in NDC space and multiply by current pixel Camera Space depth
+			// to get camera space values.
+			// Eg.
+			//const float NDCcurrentPixelX = (wA * A_NDC.z) + (wB * B_NDC.z) + (wC * C_NDC.z);
+			//const float cameraSpacePixelX = NDCcurrentPixelX * pixelCameraSpaceDepth;
 
+			// Z can also be derived and used to test that the operations are correct
+			//// Test that demonstrates liniarity in lerping across NDC values
+			//// Lerp to get NDC z of current pixel, then transform to Camera Space using derived pixel depth
+			//const float m22 = CAMERA_FAR / (CAMERA_FAR - CAMERA_NEAR); // Persp matrix m22
+			//const float m23 = -1.f * ((CAMERA_FAR * CAMERA_NEAR) / (CAMERA_FAR - CAMERA_NEAR)); // Persp matrix m23
+			//const float ndcDepth = wA * A_NDC.z + wB * B_NDC.z + wC * C_NDC.z;
+			//const float CameraDepthAfterPerspOps = ndcDepth * pixelCameraSpaceDepth;
+			//const float CameraDepth = (CameraDepthAfterPerspOps - m23) / m22; // Under Persp matrix re-map
+			//// CameraDepth == pixelCameraSpaceDepth
 
-
-			//if (pixelDepth <= 0.f || pixelDepth> 1.f)
-			//{
-			//	continue;
-			//}
-
+			if (ndcDepth <= 0.f || ndcDepth> 1.f)
+			{
+				continue;
+			}
 
 			if (bUseZBuffer)
 			{
 				const float existingDepth = DepthData[pixelPos];
-				if (pixelDepth < existingDepth)
+				if (ndcDepth < existingDepth)
 				{
-					DepthData[pixelPos] = pixelDepth;
+					DepthData[pixelPos] = ndcDepth;
 				}
 				else
 				{
@@ -620,9 +635,7 @@ void SoftwareRasterizer::DrawTriangle(const VtxShaderOutput& A, const VtxShaderO
 			const glm::vec3 BColor(B.TexCoords.x, B.TexCoords.y, 0.f);
 			const glm::vec3 CColor(C.TexCoords.x, C.TexCoords.y, 0.f);
 
-			const glm::vec3 finalColor = wA * AColor + wB * BColor + wC * CColor;
-			//const glm::vec3 finalColor = wA * glm::vec3(1.f, 1.f, 1.f);
-
+			const glm::vec3 finalColor = glm::vec3(texCoordsPerspInterp.x, texCoordsPerspInterp.y, 0.f);
 
 			if (bDrawOnlyBackfaceCulled)
 			{
