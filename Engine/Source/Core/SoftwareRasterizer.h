@@ -3,6 +3,7 @@
 #include "glm/glm.hpp"
 #include "glm/ext/vector_float2.hpp"
 #include "EASTL/shared_ptr.h"
+#include "DirectXTex.h"
 
 class SoftwareRasterizer
 {
@@ -29,7 +30,7 @@ public:
 		glm::vec2 TexCoords;
 	};
 
-	void DrawTriangle(const VtxShaderOutput& A, const VtxShaderOutput& B, const VtxShaderOutput& C);
+	void DrawTriangle(const VtxShaderOutput& A, const VtxShaderOutput& B, const VtxShaderOutput& C, const DirectX::Image& CPUImage);
 	void DrawPoint(const glm::vec2i& inPoint, const glm::vec4& inColor = glm::vec4(1.f, 1.f, 1.f, 1.f));
 	void DoTest();
 

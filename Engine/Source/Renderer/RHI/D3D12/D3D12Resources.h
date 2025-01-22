@@ -5,6 +5,7 @@
 #include <d3d12.h>
 #include "Renderer/RHI/Resources/RHITexture.h"
 #include "D3D12Utility.h"
+#include "DirectXTex.h"
 
 class D3D12IndexBuffer : public RHIIndexBuffer
 {
@@ -40,6 +41,7 @@ class D3D12Texture2D : public RHITexture2D
 public:
 	ID3D12Resource* Resource = nullptr;
 	uint32_t SRVIndex = -1;
+	DirectX::ScratchImage CPUImage;
 };
 
 // Texture that can be updated each frame

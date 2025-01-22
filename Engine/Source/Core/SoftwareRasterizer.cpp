@@ -401,12 +401,17 @@ void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 	const Scene& currentScene = sManager.GetCurrentScene();
 	const glm::mat4 view = currentScene.GetMainCameraLookAt();
 
+	const eastl::vector<MeshMaterial>& materials = inModel->Materials;
 	for (uint32_t i = 0; i < modelChildren.size(); ++i)
 	{
 		const TransformObjPtr& currChild = modelChildren[i];
 		eastl::shared_ptr<MeshNode> node = eastl::dynamic_shared_pointer_cast<MeshNode>(currChild);
 		if (node)
 		{
+			const MeshMaterial& currMaterial = materials[node->MatIndex];
+			const eastl::shared_ptr<D3D12Texture2D>& currTex = currMaterial.AlbedoMap;
+			const DirectX::ScratchImage& dxImage = currTex->CPUImage;
+
 			const eastl::vector<SimpleVertex> CPUVertices = node->CPUVertices;
 			const eastl::vector<uint32_t> CPUIndices = node->CPUIndices;
 
@@ -445,7 +450,7 @@ void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 					//const glm::vec3 viewDir = currentScene.GetCurrentCamera()->GetViewDir();
 					const glm::vec3 viewDir = view[2]; // Z axis of rotation
 
-					DrawTriangle({ vtxAClipsSpace, vtxA.Normal, vtxA.TexCoords }, { vtxBClipSpace, vtxB.Normal, vtxB.TexCoords }, { vtxCClipSpace, vtxC.Normal, vtxC.TexCoords });
+					DrawTriangle({ vtxAClipsSpace, vtxA.Normal, vtxA.TexCoords }, { vtxBClipSpace, vtxB.Normal, vtxB.TexCoords }, { vtxCClipSpace, vtxC.Normal, vtxC.TexCoords }, dxImage.GetImages()[0]);
 				}
 				++countTriangles;
 
@@ -455,7 +460,7 @@ void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 	}
 }
 
-void SoftwareRasterizer::DrawTriangle(const VtxShaderOutput& A, const VtxShaderOutput& B, const VtxShaderOutput& C)
+void SoftwareRasterizer::DrawTriangle(const VtxShaderOutput& A, const VtxShaderOutput& B, const VtxShaderOutput& C, const DirectX::Image& CPUImage)
 {
 	const glm::vec3 A_NDC = HomDivide(A.ClipSpacePos);
 	const glm::vec3 B_NDC = HomDivide(B.ClipSpacePos);
@@ -596,6 +601,7 @@ void SoftwareRasterizer::DrawTriangle(const VtxShaderOutput& A, const VtxShaderO
 			glm::vec2 texCoordsPerspInterp = wA * (A.TexCoords / A.ClipSpacePos.w) + wB * (B.TexCoords / B.ClipSpacePos.w) + wC *(C.TexCoords / C.ClipSpacePos.w);
 			texCoordsPerspInterp *= pixelCameraSpaceDepth;
 
+			texCoordsPerspInterp.y = 1.f - texCoordsPerspInterp.y;
 
 			// To get any other coordinate of the current pixel, we can just linearly interpolate it in NDC space and multiply by current pixel Camera Space depth
 			// to get camera space values.
@@ -618,6 +624,7 @@ void SoftwareRasterizer::DrawTriangle(const VtxShaderOutput& A, const VtxShaderO
 				continue;
 			}
 
+			// Z Buffer
 			if (bUseZBuffer)
 			{
 				const float existingDepth = DepthData[pixelPos];
@@ -631,11 +638,32 @@ void SoftwareRasterizer::DrawTriangle(const VtxShaderOutput& A, const VtxShaderO
 				}
 			}
 
+			const size_t textureHeight = CPUImage.height;
+			const size_t textureWidth = CPUImage.width;
+			const uint8_t* texels = CPUImage.pixels;
+
+			const size_t texelX = texCoordsPerspInterp.x * textureWidth;
+			const size_t texelY = texCoordsPerspInterp.y * textureHeight;
+
+			const size_t texelPos = texelY * (textureWidth * 4) + (texelX * 4);
+			if (texelPos >= CPUImage.slicePitch)
+			{
+				LOG_WARNING("Tried to sample beyond texture bounds");
+				continue;
+			}
+
 			const glm::vec3 AColor(A.TexCoords.x, A.TexCoords.y, 0.f);
 			const glm::vec3 BColor(B.TexCoords.x, B.TexCoords.y, 0.f);
 			const glm::vec3 CColor(C.TexCoords.x, C.TexCoords.y, 0.f);
 
-			const glm::vec3 finalColor = glm::vec3(texCoordsPerspInterp.x, texCoordsPerspInterp.y, 0.f);
+			uint32_t RGBA = 0;
+			uint8_t* bytes = (uint8_t*)&RGBA;
+			bytes[0] = texels[texelPos];
+			bytes[1] = texels[texelPos + 1];
+			bytes[2] = texels[texelPos + 2];
+			bytes[3] = texels[texelPos + 3];
+
+			const glm::vec3 UVColor = glm::vec3(texCoordsPerspInterp.x, texCoordsPerspInterp.y, 0.f);
 
 			if (bDrawOnlyBackfaceCulled)
 			{
@@ -646,7 +674,8 @@ void SoftwareRasterizer::DrawTriangle(const VtxShaderOutput& A, const VtxShaderO
 			}
 			else
 			{
-				FinalImageData[pixelPos] = ConvertToRGBA(glm::vec4(finalColor.x, finalColor.y, finalColor.z, 1.f));
+				//FinalImageData[pixelPos] = ConvertToRGBA(glm::vec4(UVColor.x, UVColor.y, UVColor.z, 1.f));
+				FinalImageData[pixelPos] = RGBA;
 			}
 		}
 	}
