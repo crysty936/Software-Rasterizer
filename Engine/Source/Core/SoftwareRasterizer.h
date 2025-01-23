@@ -35,6 +35,35 @@ public:
 	void DoTest();
 
 private:
+
+	struct PixelShadeDataPkg
+	{
+		glm::vec3 A_NDC;
+		glm::vec3 B_NDC;
+		glm::vec3 C_NDC;
+
+		glm::vec3 vtxAScreenSpace;
+		glm::vec3 vtxBScreenSpace;
+		glm::vec3 vtxCScreenSpace;
+
+		glm::vec2 A_PS;
+		glm::vec2 B_PS;
+		glm::vec2 C_PS;
+
+		VtxShaderOutput A;
+		VtxShaderOutput B;
+		VtxShaderOutput C;
+
+		uint8_t* TexPixels;
+		size_t TexWidth;
+		size_t TexHeight;
+
+		bool bCulled = false;
+	};
+
+	void ShadePixel(const int32_t inX, const int32_t inY, const PixelShadeDataPkg& inPixelData);
+
+private:
 	uint32_t* FinalImageData = nullptr;
 	float* DepthData = nullptr;
 	glm::vec4* IntermediaryImageData = nullptr;

@@ -59,7 +59,7 @@ SoftwareRasterizer::~SoftwareRasterizer()
 
 void SoftwareRasterizer::TransposeImage()
 {
-	for (int32_t i = 0; i < ImageHeight/2; ++i)
+	for (int32_t i = 0; i < ImageHeight / 2; ++i)
 	{
 		char* swap1 = (char*)&FinalImageData[i * ImageWidth];
 		char* swap1End = (char*)&FinalImageData[i * ImageWidth + ImageWidth];// End of line
@@ -460,6 +460,7 @@ void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 	}
 }
 
+
 void SoftwareRasterizer::DrawTriangle(const VtxShaderOutput& A, const VtxShaderOutput& B, const VtxShaderOutput& C, const DirectX::Image& CPUImage)
 {
 	const glm::vec3 A_NDC = HomDivide(A.ClipSpacePos);
@@ -548,138 +549,202 @@ void SoftwareRasterizer::DrawTriangle(const VtxShaderOutput& A, const VtxShaderO
 	const int32_t pixelMaxY = static_cast<int32_t>(max.y);
 	const int32_t pixelMaxX = static_cast<int32_t>(max.x);
 
-	for (int32_t i = pixelMinY; i <= pixelMaxY; ++i)
+	eastl::vector<uint32_t> m_ImageHorizontalIter, m_ImageVerticalIter;
+
+	const int32_t sizeY = pixelMaxY - pixelMinY;
+	const int32_t sizeX = pixelMaxX - pixelMinX;
+	m_ImageHorizontalIter.resize(sizeX);
+	m_ImageVerticalIter.resize(sizeY);
+
+	for (int32_t i = 0; i < sizeX; i++)
 	{
-		for (int32_t j = pixelMinX; j <= pixelMaxX; ++j)
+		m_ImageHorizontalIter[i] = i;
+	}
+
+	for (int32_t i = 0; i < sizeY; i++)
+	{
+		m_ImageVerticalIter[i] = i;
+	}
+
+	PixelShadeDataPkg shadingData;
+	{
+		shadingData.A = A;
+		shadingData.B = B;
+		shadingData.C = C;
+
+		shadingData.A_NDC = A_NDC;
+		shadingData.B_NDC = B_NDC;
+		shadingData.C_NDC = C_NDC;
+
+		shadingData.A_PS = A_PS;
+		shadingData.B_PS = B_PS;
+		shadingData.C_PS = C_PS;
+
+		shadingData.vtxAScreenSpace = vtxAScreenSpace;
+		shadingData.vtxBScreenSpace = vtxBScreenSpace;
+		shadingData.vtxCScreenSpace = vtxCScreenSpace;
+
+		shadingData.TexPixels = CPUImage.pixels;
+		shadingData.TexWidth = CPUImage.width;
+		shadingData.TexHeight = CPUImage.height;
+
+		shadingData.bCulled = false;
+	}
+
+	std::for_each(std::execution::par, m_ImageVerticalIter.begin(), m_ImageVerticalIter.end(),
+	[this, shadingData, &m_ImageHorizontalIter, pixelMinX, pixelMinY](uint32_t i)
+	{
+		std::for_each(std::execution::par, m_ImageHorizontalIter.begin(), m_ImageHorizontalIter.end(),
+		[this, i, shadingData, pixelMinX, pixelMinY](uint32_t j)
 		{
+			ShadePixel(pixelMinX + j, pixelMinY + i, shadingData);
+		});
+	});
 
-			int32_t pixelPos = 0;
-			if (!TryGetPixelPos(j, i, pixelPos))
-			{
-				continue;
-			}
+	//for (int32_t i = pixelMinY; i <= pixelMaxY; ++i)
+	//{
+	//	for (int32_t j = pixelMinX; j <= pixelMaxX; ++j)
+	//	{
 
-			const glm::vec2 P(j + 0.5f, i + 0.5f); // Move P to pixel center
 
-			// Derive barycentric coordinates and from those determine if pixel is in triangle
-			// Formula in Drive document at Barycentric Coordiantes section
+	//		ShadePixel(j, i, shadingData);
+	//	}
+	//}
 
-			float wA, wB, wC;
-			// Cramer's rule for 2D vertices barycentric coordinates
-			{
-				const glm::vec2 V0 = B_PS - A_PS;
-				const glm::vec2 V1 = C_PS - A_PS;
-				const glm::vec2 V2 = P - A_PS;
 
-				const float det = V0.x * V1.y - V1.x * V0.y;
+}
 
-				// Calculate 1/det to replace 2 divisons with 1 division and 2 mult
-				const float oneOverDet = det != 0.f ? 1.f / det : 1.f; // Det is 0 when vtx is on near plane
 
-				wB = (V2.x * V1.y - V1.x * V2.y) * oneOverDet;
-				wC = (V0.x * V2.y - V2.x * V0.y) * oneOverDet;
-				wA = 1.f - wB - wC;
-			}
+void SoftwareRasterizer::ShadePixel(const int32_t inX, const int32_t inY, const PixelShadeDataPkg& inPixelData)
+{
+	int32_t pixelPos = 0;
+	if (!TryGetPixelPos(inX, inY, pixelPos))
+	{
+		return;
+	}
 
-			if (wA < 0.f || wB < 0.f || wC < 0.f || wA > 1.f || wB >1.f || wC > 1.f)
-			{
-				continue;
-			}
+	const glm::vec2 P(inX + 0.5f, inY + 0.5f); // Move P to pixel center
 
-			// x, y, z can be linearly interpolated in screen space using screen space derived barycentrics.
-			// However, nothing that's in camera space can be derived using just the screen space derived barycentrics
-			// For that we need the camera space z.
-			
-			const float ndcDepth = (wA * A_NDC.z) + (wB * B_NDC.z) + (wC * C_NDC.z);
-			const float pixelCameraSpaceDepth = 1.f / ((wA / A.ClipSpacePos.w) + (wB / B.ClipSpacePos.w) + (wC / C.ClipSpacePos.w)); // Depth in camera space, 
-			// we need this because this for everything else because this is what gets used to do the perspective divide
+	// Derive barycentric coordinates and from those determine if pixel is in triangle
+	// Formula in Drive document at Barycentric Coordiantes section
 
-			
-			// Divide texcoords by z, to "transform them to post perspective divide space"
-			// Then, multiply by the new z to get back the standard space value.
-			// Could also be explained as "x * 1/z is linear across the screen space interpolation)
-			glm::vec2 texCoordsPerspInterp = wA * (A.TexCoords / A.ClipSpacePos.w) + wB * (B.TexCoords / B.ClipSpacePos.w) + wC *(C.TexCoords / C.ClipSpacePos.w);
-			texCoordsPerspInterp *= pixelCameraSpaceDepth;
+	float wA, wB, wC;
+	// Cramer's rule for 2D vertices barycentric coordinates
+	{
+		const glm::vec2 V0 = inPixelData.B_PS - inPixelData.A_PS;
+		const glm::vec2 V1 = inPixelData.C_PS - inPixelData.A_PS;
+		const glm::vec2 V2 = P - inPixelData.A_PS;
 
-			texCoordsPerspInterp.y = 1.f - texCoordsPerspInterp.y;
+		const float det = V0.x * V1.y - V1.x * V0.y;
 
-			// To get any other coordinate of the current pixel, we can just linearly interpolate it in NDC space and multiply by current pixel Camera Space depth
-			// to get camera space values.
-			// Eg.
-			//const float NDCcurrentPixelX = (wA * A_NDC.z) + (wB * B_NDC.z) + (wC * C_NDC.z);
-			//const float cameraSpacePixelX = NDCcurrentPixelX * pixelCameraSpaceDepth;
+		// Calculate 1/det to replace 2 divisons with 1 division and 2 mult
+		const float oneOverDet = det != 0.f ? 1.f / det : 1.f; // Det is 0 when vtx is on near plane
 
-			// Z can also be derived and used to test that the operations are correct
-			//// Test that demonstrates liniarity in lerping across NDC values
-			//// Lerp to get NDC z of current pixel, then transform to Camera Space using derived pixel depth
-			//const float m22 = CAMERA_FAR / (CAMERA_FAR - CAMERA_NEAR); // Persp matrix m22
-			//const float m23 = -1.f * ((CAMERA_FAR * CAMERA_NEAR) / (CAMERA_FAR - CAMERA_NEAR)); // Persp matrix m23
-			//const float ndcDepth = wA * A_NDC.z + wB * B_NDC.z + wC * C_NDC.z;
-			//const float CameraDepthAfterPerspOps = ndcDepth * pixelCameraSpaceDepth;
-			//const float CameraDepth = (CameraDepthAfterPerspOps - m23) / m22; // Under Persp matrix re-map
-			//// CameraDepth == pixelCameraSpaceDepth
+		wB = (V2.x * V1.y - V1.x * V2.y) * oneOverDet;
+		wC = (V0.x * V2.y - V2.x * V0.y) * oneOverDet;
+		wA = 1.f - wB - wC;
+	}
 
-			if (ndcDepth <= 0.f || ndcDepth> 1.f)
-			{
-				continue;
-			}
 
-			// Z Buffer
-			if (bUseZBuffer)
-			{
-				const float existingDepth = DepthData[pixelPos];
-				if (ndcDepth < existingDepth)
-				{
-					DepthData[pixelPos] = ndcDepth;
-				}
-				else
-				{
-					continue;
-				}
-			}
+	if (wA < 0.f || wB < 0.f || wC < 0.f || wA > 1.f || wB >1.f || wC > 1.f)
+	{
+		return;
+	}
 
-			const size_t textureHeight = CPUImage.height;
-			const size_t textureWidth = CPUImage.width;
-			const uint8_t* texels = CPUImage.pixels;
+	// x, y, z can be linearly interpolated in screen space using screen space derived barycentrics.
+	// However, nothing that's in camera space can be derived using just the screen space derived barycentrics
+	// For that we need the camera space z.
 
-			const size_t texelX = texCoordsPerspInterp.x * textureWidth;
-			const size_t texelY = texCoordsPerspInterp.y * textureHeight;
+	const float ndcDepth = (wA * inPixelData.A_NDC.z) + (wB * inPixelData.B_NDC.z) + (wC * inPixelData.C_NDC.z);
+	const float pixelCameraSpaceDepth = 1.f / ((wA / inPixelData.A.ClipSpacePos.w) + (wB / inPixelData.B.ClipSpacePos.w) + (wC / inPixelData.C.ClipSpacePos.w)); // Depth in camera space, 
+	// we need this because this for everything else because this is what gets used to do the perspective divide
 
-			const size_t texelPos = texelY * (textureWidth * 4) + (texelX * 4);
-			if (texelPos >= CPUImage.slicePitch)
-			{
-				LOG_WARNING("Tried to sample beyond texture bounds");
-				continue;
-			}
 
-			const glm::vec3 AColor(A.TexCoords.x, A.TexCoords.y, 0.f);
-			const glm::vec3 BColor(B.TexCoords.x, B.TexCoords.y, 0.f);
-			const glm::vec3 CColor(C.TexCoords.x, C.TexCoords.y, 0.f);
 
-			uint32_t RGBA = 0;
-			uint8_t* bytes = (uint8_t*)&RGBA;
-			bytes[0] = texels[texelPos];
-			bytes[1] = texels[texelPos + 1];
-			bytes[2] = texels[texelPos + 2];
-			bytes[3] = texels[texelPos + 3];
+	// Divide texcoords by z, to "transform them to post perspective divide space"
+	// Then, multiply by the new z to get back the standard space value.
+	// Could also be explained as "x * 1/z is linear across the screen space interpolation)
+	glm::vec2 texCoordsPerspInterp = wA * (inPixelData.A.TexCoords / inPixelData.A.ClipSpacePos.w) + wB * (inPixelData.B.TexCoords / inPixelData.B.ClipSpacePos.w) + wC * (inPixelData.C.TexCoords / inPixelData.C.ClipSpacePos.w);
+	texCoordsPerspInterp *= pixelCameraSpaceDepth;
 
-			const glm::vec3 UVColor = glm::vec3(texCoordsPerspInterp.x, texCoordsPerspInterp.y, 0.f);
+	texCoordsPerspInterp.y = 1.f - texCoordsPerspInterp.y;
 
-			if (bDrawOnlyBackfaceCulled)
-			{
-				if (bCulled)
-				{
-					FinalImageData[pixelPos] = ConvertToRGBA(glm::vec4(1.f, 0.f, 0.f, 1.f));
-				}
-			}
-			else
-			{
-				//FinalImageData[pixelPos] = ConvertToRGBA(glm::vec4(UVColor.x, UVColor.y, UVColor.z, 1.f));
-				FinalImageData[pixelPos] = RGBA;
-			}
+	// To get any other coordinate of the current pixel, we can just linearly interpolate it in NDC space and multiply by current pixel Camera Space depth
+	// to get camera space values.
+	// Eg.
+	//const float NDCcurrentPixelX = (wA * A_NDC.z) + (wB * B_NDC.z) + (wC * C_NDC.z);
+	//const float cameraSpacePixelX = NDCcurrentPixelX * pixelCameraSpaceDepth;
+
+	// Z can also be derived and used to test that the operations are correct
+	//// Test that demonstrates liniarity in lerping across NDC values
+	//// Lerp to get NDC z of current pixel, then transform to Camera Space using derived pixel depth
+	//const float m22 = CAMERA_FAR / (CAMERA_FAR - CAMERA_NEAR); // Persp matrix m22
+	//const float m23 = -1.f * ((CAMERA_FAR * CAMERA_NEAR) / (CAMERA_FAR - CAMERA_NEAR)); // Persp matrix m23
+	//const float ndcDepth = wA * A_NDC.z + wB * B_NDC.z + wC * C_NDC.z;
+	//const float CameraDepthAfterPerspOps = ndcDepth * pixelCameraSpaceDepth;
+	//const float CameraDepth = (CameraDepthAfterPerspOps - m23) / m22; // Under Persp matrix re-map
+	//// CameraDepth == pixelCameraSpaceDepth
+
+	if (ndcDepth <= 0.f || ndcDepth > 1.f)
+	{
+		return;
+	}
+
+	// Z Buffer
+	if (bUseZBuffer)
+	{
+		const float existingDepth = DepthData[pixelPos];
+		if (ndcDepth < existingDepth)
+		{
+			DepthData[pixelPos] = ndcDepth;
+		}
+		else
+		{
+			return;
 		}
 	}
 
+
+	const size_t textureHeight = inPixelData.TexHeight;
+	const size_t textureWidth = inPixelData.TexWidth;
+	const uint8_t* texels = inPixelData.TexPixels;
+
+	const size_t texelX = size_t(texCoordsPerspInterp.x * textureWidth);
+	const size_t texelY = size_t(texCoordsPerspInterp.y * textureHeight);
+
+	const size_t texelPos = texelY * (textureWidth * 4) + (texelX * 4);
+	if (texelPos >= (textureHeight * (textureWidth * 4)))
+	{
+		LOG_WARNING("Tried to sample beyond texture bounds");
+		return;
+	}
+
+	const glm::vec3 AColor(inPixelData.A.TexCoords.x, inPixelData.A.TexCoords.y, 0.f);
+	const glm::vec3 BColor(inPixelData.B.TexCoords.x, inPixelData.B.TexCoords.y, 0.f);
+	const glm::vec3 CColor(inPixelData.C.TexCoords.x, inPixelData.C.TexCoords.y, 0.f);
+
+
+	uint32_t RGBA = 0;
+	uint8_t* bytes = (uint8_t*)&RGBA;
+	bytes[0] = texels[texelPos];
+	bytes[1] = texels[texelPos + 1];
+	bytes[2] = texels[texelPos + 2];
+	bytes[3] = texels[texelPos + 3];
+
+	const glm::vec3 UVColor = glm::vec3(texCoordsPerspInterp.x, texCoordsPerspInterp.y, 0.f);
+
+	if (bDrawOnlyBackfaceCulled)
+	{
+		if (inPixelData.bCulled)
+		{
+			FinalImageData[pixelPos] = ConvertToRGBA(glm::vec4(1.f, 0.f, 0.f, 1.f));
+		}
+	}
+	else
+	{
+		//FinalImageData[pixelPos] = ConvertToRGBA(glm::vec4(UVColor.x, UVColor.y, UVColor.z, 1.f));
+		FinalImageData[pixelPos] = RGBA;
+	}
 
 }
 
@@ -696,8 +761,8 @@ void SoftwareRasterizer::DoTest()
 {
 	{
 		const glm::vec2 A(40, 58);
-		const glm::vec2 B(10,10);
-		const glm::vec2 C(70,30);
+		const glm::vec2 B(10, 10);
+		const glm::vec2 C(70, 30);
 
 		//DrawPoint(B);
 
