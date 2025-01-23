@@ -409,10 +409,10 @@ void SoftwareRasterizer::DrawChildren(const eastl::vector<TransformObjPtr>& inCh
 			// Draw triangle by triangle
 			for (uint32_t triangleIdx = 0; triangleIdx < numTriangles; ++triangleIdx)
 			{
-				if (countTriangles >= maxTriangles)
-				{
-					return;
-				}
+				//if (countTriangles >= maxTriangles)
+				//{
+				//	return;
+				//}
 
 				const uint32_t idxStart = triangleIdx * 3;
 
@@ -713,24 +713,24 @@ void SoftwareRasterizer::ShadePixel(const int32_t inX, const int32_t inY, const 
 	//const float CameraDepth = (CameraDepthAfterPerspOps - m23) / m22; // Under Persp matrix re-map
 	//// CameraDepth == pixelCameraSpaceDepth
 
-	//if (ndcDepth <= 0.f || ndcDepth > 1.f)
-	//{
-	//	return;
-	//}
+	if (ndcDepth <= 0.f || ndcDepth > 1.f)
+	{
+		return;
+	}
 
 	// Z Buffer
-	//if (bUseZBuffer)
-	//{
-	//	const float existingDepth = DepthData[pixelPos];
-	//	if (ndcDepth < existingDepth)
-	//	{
-	//		DepthData[pixelPos] = ndcDepth;
-	//	}
-	//	else
-	//	{
-	//		return;
-	//	}
-	//}
+	if (bUseZBuffer)
+	{
+		const float existingDepth = DepthData[pixelPos];
+		if (ndcDepth < existingDepth)
+		{
+			DepthData[pixelPos] = ndcDepth;
+		}
+		else
+		{
+			return;
+		}
+	}
 
 
 	const size_t textureHeight = inPixelData.TexHeight;

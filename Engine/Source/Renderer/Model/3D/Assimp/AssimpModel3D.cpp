@@ -131,6 +131,7 @@ void AssimpModel3D::ProcessMesh(const aiMesh& inMesh, const aiScene& inScene, ea
 
 	{
 		eastl::vector<Vertex> vertices;
+		eastl::vector<SimpleVertex> cpuVertices;
 		eastl::vector<uint32_t> indices;
 
 		for (uint32_t i = 0; i < inMesh.mNumVertices; i++)
@@ -167,6 +168,12 @@ void AssimpModel3D::ProcessMesh(const aiMesh& inMesh, const aiScene& inScene, ea
 			}
 
 			vertices.push_back(vert);
+
+			SimpleVertex cpuVert;
+			cpuVert.Position = vert.Position;
+			cpuVert.Normal = vert.Normal;
+			cpuVert.TexCoords = vert.TexCoords;
+			cpuVertices.push_back(cpuVert);
 		}
 
 		for (uint32_t i = 0; i < inMesh.mNumFaces; i++)
@@ -183,8 +190,6 @@ void AssimpModel3D::ProcessMesh(const aiMesh& inMesh, const aiScene& inScene, ea
 		indexBuffer = D3D12RHI::Get()->CreateIndexBuffer(indices.data(), indicesCount);
 		newMesh->CPUIndices = eastl::vector<uint32_t>(indices.data(), indices.data() + indicesCount);
 
-		const int32_t verticesCount = static_cast<int32_t>(vertices.size());
-
 		vertexBuffer = D3D12RHI::Get()->CreateVertexBuffer(inputLayout, (float*)vertices.data(), vertices.size(), indexBuffer);
 
 
@@ -192,8 +197,10 @@ void AssimpModel3D::ProcessMesh(const aiMesh& inMesh, const aiScene& inScene, ea
 		//constexpr int32_t nrFloatsInVertex = float(sizeof(SimpleVertex)) / sizeof(float);
 		//const int32_t nrVertices = nrFloats / nrFloatsInVertex;
 
-		newMesh->CPUVertices.resize(vertices.size());
-		memcpy(&newMesh->CPUVertices[0], (float*)vertices.data(), vertices.size() * sizeof(float));
+		const uint64_t vertexBufferSize = sizeof(SimpleVertex) * cpuVertices.size();
+
+		newMesh->CPUVertices.resize(cpuVertices.size());
+		memcpy(&newMesh->CPUVertices[0], (float*)cpuVertices.data(), vertexBufferSize);
 	}
 
 	newMesh->IndexBuffer = indexBuffer;
