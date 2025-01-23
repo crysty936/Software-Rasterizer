@@ -195,7 +195,8 @@ void AppModeBase::CreateInitialResources()
 
 	// Models
 
-	MainModel = eastl::make_shared<CubeShape>("TheCube");
+	//MainModel = eastl::make_shared<CubeShape>("TheCube");
+	MainModel = eastl::make_shared<AssimpModel3D>("../Data/Models/Shiba/scene.gltf", "Model");
 	//MainModel = eastl::make_shared<SquareShape>("TheSquare");
 	MainModel->Init(m_commandList);
 	//MainModel->SetScale(glm::vec3(5.f, 5.f, 5.f));

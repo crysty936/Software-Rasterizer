@@ -378,39 +378,26 @@ inline int32_t Get2DCrossProductMagnitude(const glm::vec2i& A, const glm::vec2i&
 	return det;
 }
 
-void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
+int32_t countTriangles = 0;
+
+void SoftwareRasterizer::DrawChildren(const eastl::vector<TransformObjPtr>& inChildren, const glm::mat4& inProj, const glm::mat4& inView, const eastl::vector<MeshMaterial>& inMaterials)
 {
-
-
-	int32_t countTriangles = 0;
-
-	const eastl::vector<TransformObjPtr>& modelChildren = inModel->GetChildren();
-
-	const Transform& modelTrans = inModel->GetAbsoluteTransform();
-	const glm::mat4 absoluteMat = modelTrans.GetMatrix();
-	const float orthoAABBHalfLength = 5.f;
-	//const glm::mat4 projection = glm::orthoLH_ZO(-orthoAABBHalfLength, orthoAABBHalfLength, -orthoAABBHalfLength, orthoAABBHalfLength, 0.f, orthoAABBHalfLength * 2);
-	const glm::mat4 projection = glm::perspectiveLH_ZO(glm::radians(CAMERA_FOV), static_cast<float>(ImageWidth) / static_cast<float>(ImageHeight), CAMERA_NEAR, CAMERA_FAR);
-
-	//const glm::mat4 perspTest = glm::perspectiveLH_ZO(glm::radians(CAMERA_FOV), static_cast<float>(ImageWidth) / static_cast<float>(ImageHeight), 1.f, 3.f);
-	//const glm::vec4 t1 = glm::vec4(0.f, 0.f, 2.f, 1.f);
-	//const glm::vec4 t2 = perspTest * t1;
-	//const glm::vec4 t3 = t2 / t2.w;
-
-	SceneManager& sManager = SceneManager::Get();
-	const Scene& currentScene = sManager.GetCurrentScene();
-	const glm::mat4 view = currentScene.GetMainCameraLookAt();
-
-	const eastl::vector<MeshMaterial>& materials = inModel->Materials;
-	for (uint32_t i = 0; i < modelChildren.size(); ++i)
+	for (uint32_t i = 0; i < inChildren.size(); ++i)
 	{
-		const TransformObjPtr& currChild = modelChildren[i];
-		eastl::shared_ptr<MeshNode> node = eastl::dynamic_shared_pointer_cast<MeshNode>(currChild);
+		const TransformObjPtr& currChild = inChildren[i];
+		DrawChildren(currChild->GetChildren(), inProj, inView, inMaterials);
+
+		const eastl::shared_ptr<MeshNode> node = eastl::dynamic_shared_pointer_cast<MeshNode>(currChild);
 		if (node)
 		{
-			const MeshMaterial& currMaterial = materials[node->MatIndex];
-			const eastl::shared_ptr<D3D12Texture2D>& currTex = currMaterial.AlbedoMap;
-			const DirectX::ScratchImage& dxImage = currTex->CPUImage;
+			const DirectX::Image* usedImage = nullptr;
+			if (node->MatIndex != uint32_t(-1))
+			{
+				const MeshMaterial& currMaterial = inMaterials[node->MatIndex];
+				const eastl::shared_ptr<D3D12Texture2D>& currTex = currMaterial.AlbedoMap;
+				const DirectX::ScratchImage& dxImage = currTex->CPUImage;
+				usedImage = &dxImage.GetImages()[0];
+			}
 
 			const eastl::vector<SimpleVertex> CPUVertices = node->CPUVertices;
 			const eastl::vector<uint32_t> CPUIndices = node->CPUIndices;
@@ -440,7 +427,10 @@ void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 					const glm::vec3 vtxBPos = vtxB.Position;
 					const glm::vec3 vtxCPos = vtxC.Position;
 
-					const glm::mat4 worldToClip = projection * view * absoluteMat;
+					const Transform& modelTrans = currChild->GetAbsoluteTransform();
+					const glm::mat4 absoluteMat = modelTrans.GetMatrix();
+
+					const glm::mat4 worldToClip = inProj * inView * absoluteMat;
 					//const glm::mat4 worldToClip = glm::mat4(1.f);
 
 					const glm::vec4 vtxAClipsSpace = TransformPosition(vtxAPos, worldToClip);
@@ -448,9 +438,9 @@ void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 					const glm::vec4 vtxCClipSpace = TransformPosition(vtxCPos, worldToClip);
 
 					//const glm::vec3 viewDir = currentScene.GetCurrentCamera()->GetViewDir();
-					const glm::vec3 viewDir = view[2]; // Z axis of rotation
+					const glm::vec3 viewDir = inView[2]; // Z axis of rotation
 
-					DrawTriangle({ vtxAClipsSpace, vtxA.Normal, vtxA.TexCoords }, { vtxBClipSpace, vtxB.Normal, vtxB.TexCoords }, { vtxCClipSpace, vtxC.Normal, vtxC.TexCoords }, dxImage.GetImages()[0]);
+					DrawTriangle({ vtxAClipsSpace, vtxA.Normal, vtxA.TexCoords }, { vtxBClipSpace, vtxB.Normal, vtxB.TexCoords }, { vtxCClipSpace, vtxC.Normal, vtxC.TexCoords }, usedImage);
 				}
 				++countTriangles;
 
@@ -458,10 +448,34 @@ void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
 		}
 
 	}
+
+}
+
+void SoftwareRasterizer::DrawModel(const eastl::shared_ptr<Model3D>& inModel)
+{
+	countTriangles = 0;
+
+	const float orthoAABBHalfLength = 5.f;
+	//const glm::mat4 projection = glm::orthoLH_ZO(-orthoAABBHalfLength, orthoAABBHalfLength, -orthoAABBHalfLength, orthoAABBHalfLength, 0.f, orthoAABBHalfLength * 2);
+	const glm::mat4 projection = glm::perspectiveLH_ZO(glm::radians(CAMERA_FOV), static_cast<float>(ImageWidth) / static_cast<float>(ImageHeight), CAMERA_NEAR, CAMERA_FAR);
+
+	//const glm::mat4 perspTest = glm::perspectiveLH_ZO(glm::radians(CAMERA_FOV), static_cast<float>(ImageWidth) / static_cast<float>(ImageHeight), 1.f, 3.f);
+	//const glm::vec4 t1 = glm::vec4(0.f, 0.f, 2.f, 1.f);
+	//const glm::vec4 t2 = perspTest * t1;
+	//const glm::vec4 t3 = t2 / t2.w;
+
+	SceneManager& sManager = SceneManager::Get();
+	const Scene& currentScene = sManager.GetCurrentScene();
+	const glm::mat4 view = currentScene.GetMainCameraLookAt();
+
+	const eastl::vector<MeshMaterial>& materials = inModel->Materials;
+	const eastl::vector<TransformObjPtr>& modelChildren = inModel->GetChildren();
+
+	DrawChildren(inModel->GetChildren(), projection, view, materials);
 }
 
 
-void SoftwareRasterizer::DrawTriangle(const VtxShaderOutput& A, const VtxShaderOutput& B, const VtxShaderOutput& C, const DirectX::Image& CPUImage)
+void SoftwareRasterizer::DrawTriangle(const VtxShaderOutput& A, const VtxShaderOutput& B, const VtxShaderOutput& C, const DirectX::Image* CPUImage)
 {
 	const glm::vec3 A_NDC = HomDivide(A.ClipSpacePos);
 	const glm::vec3 B_NDC = HomDivide(B.ClipSpacePos);
@@ -584,12 +598,25 @@ void SoftwareRasterizer::DrawTriangle(const VtxShaderOutput& A, const VtxShaderO
 		shadingData.vtxBScreenSpace = vtxBScreenSpace;
 		shadingData.vtxCScreenSpace = vtxCScreenSpace;
 
-		shadingData.TexPixels = CPUImage.pixels;
-		shadingData.TexWidth = CPUImage.width;
-		shadingData.TexHeight = CPUImage.height;
+		if(CPUImage)
+		{
+			shadingData.TexPixels = CPUImage->pixels;
+			shadingData.TexWidth = CPUImage->width;
+			shadingData.TexHeight = CPUImage->height;
+			shadingData.bHasTexture = true;
+		}
+		else
+		{
+			shadingData.bHasTexture = false;
+		}
 
 		shadingData.bCulled = false;
 	}
+
+
+#define USE_MT 0
+
+#if USE_MT
 
 	std::for_each(std::execution::par, m_ImageVerticalIter.begin(), m_ImageVerticalIter.end(),
 	[this, shadingData, &m_ImageHorizontalIter, pixelMinX, pixelMinY](uint32_t i)
@@ -601,15 +628,16 @@ void SoftwareRasterizer::DrawTriangle(const VtxShaderOutput& A, const VtxShaderO
 		});
 	});
 
-	//for (int32_t i = pixelMinY; i <= pixelMaxY; ++i)
-	//{
-	//	for (int32_t j = pixelMinX; j <= pixelMaxX; ++j)
-	//	{
+#else
 
-
-	//		ShadePixel(j, i, shadingData);
-	//	}
-	//}
+	for (int32_t i = pixelMinY; i <= pixelMaxY; ++i)
+	{
+		for (int32_t j = pixelMinX; j <= pixelMaxX; ++j)
+		{
+			ShadePixel(j, i, shadingData);
+		}
+	}
+#endif
 
 
 }
@@ -685,24 +713,24 @@ void SoftwareRasterizer::ShadePixel(const int32_t inX, const int32_t inY, const 
 	//const float CameraDepth = (CameraDepthAfterPerspOps - m23) / m22; // Under Persp matrix re-map
 	//// CameraDepth == pixelCameraSpaceDepth
 
-	if (ndcDepth <= 0.f || ndcDepth > 1.f)
-	{
-		return;
-	}
+	//if (ndcDepth <= 0.f || ndcDepth > 1.f)
+	//{
+	//	return;
+	//}
 
 	// Z Buffer
-	if (bUseZBuffer)
-	{
-		const float existingDepth = DepthData[pixelPos];
-		if (ndcDepth < existingDepth)
-		{
-			DepthData[pixelPos] = ndcDepth;
-		}
-		else
-		{
-			return;
-		}
-	}
+	//if (bUseZBuffer)
+	//{
+	//	const float existingDepth = DepthData[pixelPos];
+	//	if (ndcDepth < existingDepth)
+	//	{
+	//		DepthData[pixelPos] = ndcDepth;
+	//	}
+	//	else
+	//	{
+	//		return;
+	//	}
+	//}
 
 
 	const size_t textureHeight = inPixelData.TexHeight;
@@ -715,7 +743,7 @@ void SoftwareRasterizer::ShadePixel(const int32_t inX, const int32_t inY, const 
 	const size_t texelPos = texelY * (textureWidth * 4) + (texelX * 4);
 	if (texelPos >= (textureHeight * (textureWidth * 4)))
 	{
-		LOG_WARNING("Tried to sample beyond texture bounds");
+		//LOG_WARNING("Tried to sample beyond texture bounds");
 		return;
 	}
 
@@ -725,13 +753,20 @@ void SoftwareRasterizer::ShadePixel(const int32_t inX, const int32_t inY, const 
 
 
 	uint32_t RGBA = 0;
-	uint8_t* bytes = (uint8_t*)&RGBA;
-	bytes[0] = texels[texelPos];
-	bytes[1] = texels[texelPos + 1];
-	bytes[2] = texels[texelPos + 2];
-	bytes[3] = texels[texelPos + 3];
+	if (inPixelData.bHasTexture)
+	{
+		uint8_t* bytes = (uint8_t*)&RGBA;
+		bytes[0] = texels[texelPos];
+		bytes[1] = texels[texelPos + 1];
+		bytes[2] = texels[texelPos + 2];
+		bytes[3] = texels[texelPos + 3];
 
-	const glm::vec3 UVColor = glm::vec3(texCoordsPerspInterp.x, texCoordsPerspInterp.y, 0.f);
+		const glm::vec3 UVColor = glm::vec3(texCoordsPerspInterp.x, texCoordsPerspInterp.y, 0.f);
+	}
+	else
+	{
+		RGBA = ConvertToRGBA(glm::vec4(1.f, 0.f, 1.f, 1.f));
+	}
 
 	if (bDrawOnlyBackfaceCulled)
 	{

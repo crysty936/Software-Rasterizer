@@ -4,6 +4,9 @@
 #include "glm/ext/vector_float2.hpp"
 #include "EASTL/shared_ptr.h"
 #include "DirectXTex.h"
+#include "EASTL/vector.h"
+#include "Entity/TransformObject.h"
+#include "Renderer/Model/3D/Model3D.h"
 
 class SoftwareRasterizer
 {
@@ -22,6 +25,7 @@ public:
 	void BeginFrame();
 	void ClearImageBuffers();
 	inline bool TryGetPixelPos(const int32_t X, const int32_t Y, int32_t& outPixelPos);
+	void DrawChildren(const eastl::vector<TransformObjPtr>& inChildren, const glm::mat4& inProj, const glm::mat4& inView, const eastl::vector<MeshMaterial>& inMaterials);
 
 	struct VtxShaderOutput
 	{
@@ -30,7 +34,7 @@ public:
 		glm::vec2 TexCoords;
 	};
 
-	void DrawTriangle(const VtxShaderOutput& A, const VtxShaderOutput& B, const VtxShaderOutput& C, const DirectX::Image& CPUImage);
+	void DrawTriangle(const VtxShaderOutput& A, const VtxShaderOutput& B, const VtxShaderOutput& C, const DirectX::Image* CPUImage);
 	void DrawPoint(const glm::vec2i& inPoint, const glm::vec4& inColor = glm::vec4(1.f, 1.f, 1.f, 1.f));
 	void DoTest();
 
@@ -57,6 +61,7 @@ private:
 		uint8_t* TexPixels;
 		size_t TexWidth;
 		size_t TexHeight;
+		bool bHasTexture = false;
 
 		bool bCulled = false;
 	};

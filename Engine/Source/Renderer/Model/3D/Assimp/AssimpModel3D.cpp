@@ -112,6 +112,8 @@ void AssimpModel3D::ProcessNodesRecursively(const aiNode & inNode, const aiScene
 
 void AssimpModel3D::ProcessMesh(const aiMesh& inMesh, const aiScene& inScene, eastl::shared_ptr<MeshNode>& inCurrentNode, ID3D12GraphicsCommandList* inCommandList)
 {
+	eastl::shared_ptr<MeshNode> newMesh = eastl::make_shared<MeshNode>(inMesh.mName.C_Str());
+
 	VertexInputLayout inputLayout;
 	// Vertex points
 	inputLayout.Push<float>(3, VertexInputType::Position);
@@ -179,12 +181,21 @@ void AssimpModel3D::ProcessMesh(const aiMesh& inMesh, const aiScene& inScene, ea
 
 		const int32_t indicesCount = static_cast<int32_t>(indices.size());
 		indexBuffer = D3D12RHI::Get()->CreateIndexBuffer(indices.data(), indicesCount);
+		newMesh->CPUIndices = eastl::vector<uint32_t>(indices.data(), indices.data() + indicesCount);
+
 		const int32_t verticesCount = static_cast<int32_t>(vertices.size());
 
 		vertexBuffer = D3D12RHI::Get()->CreateVertexBuffer(inputLayout, (float*)vertices.data(), vertices.size(), indexBuffer);
+
+
+		//const int32_t nrFloats = BasicShapesData::GetCubeVerticesCount();
+		//constexpr int32_t nrFloatsInVertex = float(sizeof(SimpleVertex)) / sizeof(float);
+		//const int32_t nrVertices = nrFloats / nrFloatsInVertex;
+
+		newMesh->CPUVertices.resize(vertices.size());
+		memcpy(&newMesh->CPUVertices[0], (float*)vertices.data(), vertices.size() * sizeof(float));
 	}
 
-	eastl::shared_ptr<MeshNode> newMesh = eastl::make_shared<MeshNode>(inMesh.mName.C_Str());
 	newMesh->IndexBuffer = indexBuffer;
 	newMesh->VertexBuffer = vertexBuffer;
 	newMesh->MatIndex = inMesh.mMaterialIndex;
