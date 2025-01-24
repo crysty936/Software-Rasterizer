@@ -558,28 +558,6 @@ void SoftwareRasterizer::DrawTriangle(const VtxShaderOutput& A, const VtxShaderO
 	const glm::vec2 BC = C_PS - B_PS;
 	const glm::vec2 CA = A_PS - C_PS;
 
-	const int32_t pixelMinY = static_cast<int32_t>(min.y);
-	const int32_t pixelMinX = static_cast<int32_t>(min.x);
-	const int32_t pixelMaxY = static_cast<int32_t>(max.y);
-	const int32_t pixelMaxX = static_cast<int32_t>(max.x);
-
-	eastl::vector<uint32_t> m_ImageHorizontalIter, m_ImageVerticalIter;
-
-	const int32_t sizeY = pixelMaxY - pixelMinY;
-	const int32_t sizeX = pixelMaxX - pixelMinX;
-	m_ImageHorizontalIter.resize(sizeX);
-	m_ImageVerticalIter.resize(sizeY);
-
-	for (int32_t i = 0; i < sizeX; i++)
-	{
-		m_ImageHorizontalIter[i] = i;
-	}
-
-	for (int32_t i = 0; i < sizeY; i++)
-	{
-		m_ImageVerticalIter[i] = i;
-	}
-
 	PixelShadeDataPkg shadingData;
 	{
 		shadingData.A = A;
@@ -613,19 +591,82 @@ void SoftwareRasterizer::DrawTriangle(const VtxShaderOutput& A, const VtxShaderO
 		shadingData.bCulled = false;
 	}
 
+	const int32_t pixelMinY = static_cast<int32_t>(min.y);
+	const int32_t pixelMinX = static_cast<int32_t>(min.x);
+	const int32_t pixelMaxY = static_cast<int32_t>(max.y);
+	const int32_t pixelMaxX = static_cast<int32_t>(max.x);
 
-#define USE_MT 0
+	eastl::vector<uint32_t> m_threadsIter;
+
+	const int32_t sizeY = pixelMaxY - pixelMinY;
+	const int32_t sizeX = pixelMaxX - pixelMinX;
+
+	constexpr int32_t groupSize = 2; // Always square, groupSize pixels on X and groupSize pixels on Y
+	const int32_t numGroupsY = ((sizeY + 1) / groupSize) + glm::min(groupSize - 1, (sizeY + 1) % groupSize);
+	const int32_t numGroupsX = ((sizeX + 1)/ groupSize) + glm::min(groupSize - 1, (sizeX + 1) % groupSize);
+
+	const int32_t numGroups = numGroupsY * numGroupsX;
+
+	m_threadsIter.resize(numGroups);
+
+	for (int32_t i = 0; i < numGroups; i++)
+	{
+		m_threadsIter[i] = i;
+	}
+
+#define USE_MT 1
 
 #if USE_MT
 
-	std::for_each(std::execution::par, m_ImageVerticalIter.begin(), m_ImageVerticalIter.end(),
-	[this, shadingData, &m_ImageHorizontalIter, pixelMinX, pixelMinY](uint32_t i)
+
+	// Go through all groups
+	//for (int32_t groupIdx = 0; groupIdx < numGroups; ++groupIdx)
+	//{
+	//	const int32_t currGroupY = groupIdx / numGroupsX;
+	//	const int32_t currGroupX = groupIdx % numGroupsX;
+
+	//	// Execute horizontally
+	//	for (int32_t pixelGroupIdxY = 0; pixelGroupIdxY < groupSize; ++pixelGroupIdxY)
+	//	{
+	//		for (int32_t pixelGroupIdxX = 0; pixelGroupIdxX < groupSize; ++pixelGroupIdxX)
+	//		{
+	//			int32_t pixelPosX = pixelMinX + (currGroupX * groupSize) + pixelGroupIdxX;
+	//			pixelPosX = glm::clamp(pixelPosX, pixelMinX, pixelMaxX);
+
+	//			int32_t pixelPosY = pixelMinY + (currGroupY * groupSize) + pixelGroupIdxY;
+	//			pixelPosY = glm::clamp(pixelPosY, pixelMinY, pixelMaxY);
+
+	//			ShadePixel(pixelPosX, pixelPosY, shadingData);
+	//		}
+
+	//	}
+	//}
+
+
+
+
+	std::for_each(std::execution::par, m_threadsIter.begin(), m_threadsIter.end(),
+	[this, shadingData, groupSize, pixelMinX, pixelMinY, pixelMaxX, pixelMaxY, numGroupsX](uint32_t groupIdx)
 	{
-		std::for_each(std::execution::par, m_ImageHorizontalIter.begin(), m_ImageHorizontalIter.end(),
-		[this, i, shadingData, pixelMinX, pixelMinY](uint32_t j)
-		{
-			ShadePixel(pixelMinX + j, pixelMinY + i, shadingData);
-		});
+			const int32_t currGroupY = groupIdx / numGroupsX;
+			const int32_t currGroupX = groupIdx % numGroupsX;
+
+			// Execute horizontally
+			for (int32_t pixelGroupIdxY = 0; pixelGroupIdxY < groupSize; ++pixelGroupIdxY)
+			{
+				for (int32_t pixelGroupIdxX = 0; pixelGroupIdxX < groupSize; ++pixelGroupIdxX)
+				{
+					int32_t pixelPosX = pixelMinX + (currGroupX * groupSize) + pixelGroupIdxX;
+					pixelPosX = glm::clamp(pixelPosX, pixelMinX, pixelMaxX);
+
+					int32_t pixelPosY = pixelMinY + (currGroupY * groupSize) + pixelGroupIdxY;
+					pixelPosY = glm::clamp(pixelPosY, pixelMinY, pixelMaxY);
+
+					ShadePixel(pixelPosX, pixelPosY, shadingData);
+				}
+
+			}
+		//ShadePixel(pixelMinX + j, pixelMinY + i, shadingData);
 	});
 
 #else
@@ -642,6 +683,42 @@ void SoftwareRasterizer::DrawTriangle(const VtxShaderOutput& A, const VtxShaderO
 
 }
 
+
+#if 0
+//static std::mutex LoadQueueMutex;
+//static std::condition_variable LoadQueueCondition;
+
+//void LoaderFunc(GLFWwindow* inLoadingThreadContext)
+//{
+//	while (Engine->IsRunning())
+//	{
+//		eastl::queue<RenderingLoadCommand>& loadQueue = RHI->GetLoadQueue();
+//		std::unique_lock<std::mutex> lock{ LoadQueueMutex };
+//		LoadQueueCondition.wait(lock, [&] {return !loadQueue.empty(); });
+//
+//		RenderingLoadCommand newCommand = loadQueue.front();
+//		loadQueue.pop();
+//
+//		lock.unlock();
+//	}
+//}
+//
+//std::thread(LoaderFunc, loadingThreadContext).detach();
+//
+// 
+// void OpenGLRenderer::AddRenderLoadCommand(const RenderingLoadCommand & inCommand)
+//{
+//	std::unique_lock<std::mutex> lock{ LoadQueueMutex };
+//
+//	LoadQueue.push(inCommand);
+//	LoadQueueCondition.notify_one();
+//}
+// 
+//
+//
+//LoadQueueCondition.notify_all();
+
+#endif
 
 void SoftwareRasterizer::ShadePixel(const int32_t inX, const int32_t inY, const PixelShadeDataPkg& inPixelData)
 {
