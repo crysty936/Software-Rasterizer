@@ -8,6 +8,41 @@
 #include "Entity/TransformObject.h"
 #include "Renderer/Model/3D/Model3D.h"
 
+struct VtxShaderOutput
+{
+	glm::vec4 ClipSpacePos;
+	glm::vec3 Normal;
+	glm::vec2 TexCoords;
+};
+
+struct PixelShadeDataPkg
+{
+	glm::vec3 A_NDC;
+	glm::vec3 B_NDC;
+	glm::vec3 C_NDC;
+
+	glm::vec3 vtxAScreenSpace;
+	glm::vec3 vtxBScreenSpace;
+	glm::vec3 vtxCScreenSpace;
+
+	glm::vec2 A_PS;
+	glm::vec2 B_PS;
+	glm::vec2 C_PS;
+
+	VtxShaderOutput A;
+	VtxShaderOutput B;
+	VtxShaderOutput C;
+
+	uint8_t* TexPixels;
+	size_t TexWidth;
+	size_t TexHeight;
+	bool bHasTexture = false;
+
+	bool bCulled = false;
+};
+
+void ShadingThreadRun(class SoftwareRasterizer* inRasterizer, const int32_t inQuadIdx);
+
 class SoftwareRasterizer
 {
 public:
@@ -27,12 +62,7 @@ public:
 	inline bool TryGetPixelPos(const int32_t X, const int32_t Y, int32_t& outPixelPos);
 	void DrawChildren(const eastl::vector<TransformObjPtr>& inChildren, const glm::mat4& inProj, const glm::mat4& inView, const eastl::vector<MeshMaterial>& inMaterials);
 
-	struct VtxShaderOutput
-	{
-		glm::vec4 ClipSpacePos;
-		glm::vec3 Normal;
-		glm::vec2 TexCoords;
-	};
+
 
 	void DrawTriangle(const VtxShaderOutput& A, const VtxShaderOutput& B, const VtxShaderOutput& C, const DirectX::Image* CPUImage);
 	void DrawPoint(const glm::vec2i& inPoint, const glm::vec4& inColor = glm::vec4(1.f, 1.f, 1.f, 1.f));
@@ -40,33 +70,9 @@ public:
 
 private:
 
-	struct PixelShadeDataPkg
-	{
-		glm::vec3 A_NDC;
-		glm::vec3 B_NDC;
-		glm::vec3 C_NDC;
-
-		glm::vec3 vtxAScreenSpace;
-		glm::vec3 vtxBScreenSpace;
-		glm::vec3 vtxCScreenSpace;
-
-		glm::vec2 A_PS;
-		glm::vec2 B_PS;
-		glm::vec2 C_PS;
-
-		VtxShaderOutput A;
-		VtxShaderOutput B;
-		VtxShaderOutput C;
-
-		uint8_t* TexPixels;
-		size_t TexWidth;
-		size_t TexHeight;
-		bool bHasTexture = false;
-
-		bool bCulled = false;
-	};
-
 	void ShadePixel(const int32_t inX, const int32_t inY, const PixelShadeDataPkg& inPixelData);
+
+	friend void ShadingThreadRun(class SoftwareRasterizer* inRasterizer, const int32_t inQuadIdx);
 
 private:
 	uint32_t* FinalImageData = nullptr;
