@@ -704,7 +704,7 @@ void SoftwareRasterizer::DrawTriangle(const VtxShaderOutput& A, const VtxShaderO
 	const int32_t sizeY = glm::abs(pixelMaxY - pixelMinY);
 	const int32_t sizeX = glm::abs(pixelMaxX - pixelMinX);
 
-#define USE_MT 1
+#define USE_MT 0
 
 #if USE_MT
 	static bool firstTime = true;
