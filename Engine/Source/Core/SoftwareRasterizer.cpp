@@ -83,76 +83,81 @@ static std::condition_variable ContinueMainCondition;
 //LoadQueueCondition.notify_all();
 
 #endif
+constexpr int32_t NUM_THREADS = 64;
+constexpr int32_t PIXEL_QUAD_LENGTH = 2; // Always square, PIXEL_QUAD_LENGTH pixels on X and PIXEL_QUAD_LENGTH pixels on Y
 
-constexpr int32_t PIXEL_QUAD_LENGTH = 2; // Always square, groupSize pixels on X and groupSize pixels on Y
+eastl::vector<std::thread> s_Threads;
 
-static PixelShadeDataPkg g_PixelShadeData;
+static PixelShadeDataPkg s_PixelShadeData;
 
-static int32_t g_groupsStart	= 0;
-static int32_t g_groupsEnd		= 0;
+static int32_t s_StartQuadIdx			= 0;
+static int32_t s_EndQuadIdx				= 0;
 
-static int32_t g_pixelMinX		= 0;
-static int32_t g_pixelMinY		= 0;
+static int32_t s_pixelMinX				= 0;
+static int32_t s_pixelMinY				= 0;
 
-static int32_t g_pixelMaxX		= 0;
-static int32_t g_pixelMaxY		= 0;
+static int32_t s_pixelMaxX				= 0;
+static int32_t s_pixelMaxY				= 0;
 
-static int32_t g_NumQuadsPerImageRow = 0;
+static int32_t s_NumQuadsPerImageRow	= 0;
+static int32_t s_NumTotalQuadsPerScreen	= 0;
+static int32_t s_NumTotalQuadsCurrRun	= 0;
 
-std::atomic<int32_t> NumThreadsDone;
+std::atomic<int32_t> s_NumThreadsDone;
+std::atomic<int32_t> s_CurrAvailableQuad;
 
-static int32_t NumTotalQuads = 0;
 
-void ShadingThreadRun(SoftwareRasterizer* inRasterizer, const int32_t inQuadIdx)
+void ShadingThreadRun(SoftwareRasterizer* inRasterizer)
 {
+	{
+		std::unique_lock<std::mutex> firstTimeLock{ StartThreadsMutex };
+		StartThreadsCondition.wait(firstTimeLock);
+	}
+
 	while (GEngine->IsRunning())
 	{
-		++NumThreadsDone;
+		const int32_t currAvailableQuad = s_CurrAvailableQuad.fetch_add(1);
+		const bool isCurrQuadValid = currAvailableQuad >= s_StartQuadIdx && currAvailableQuad <= s_EndQuadIdx;
 
-		// Last thread to finish notifies main thread
-		if (NumThreadsDone.load() == NumTotalQuads)
+		//check available quad and if none are avaialble, increment done and wait
+		if (!isCurrQuadValid)
 		{
-			ContinueMainCondition.notify_one();
-		}
+			++s_NumThreadsDone;
 
-		std::unique_lock<std::mutex> lock{ StartThreadsMutex };
-		StartThreadsCondition.wait(lock);
-
-		if (inQuadIdx < g_groupsStart || inQuadIdx > g_groupsEnd)
-		{
-			continue;
-		}
-
-		const int32_t currGroupY = inQuadIdx / g_NumQuadsPerImageRow;
-		const int32_t currGroupX = inQuadIdx % g_NumQuadsPerImageRow;
-
-
-
-		// Execute horizontally
-		for (int32_t pixelGroupIdxY = 0; pixelGroupIdxY < PIXEL_QUAD_LENGTH; ++pixelGroupIdxY)
-		{
-			for (int32_t pixelGroupIdxX = 0; pixelGroupIdxX < PIXEL_QUAD_LENGTH; ++pixelGroupIdxX)
+			// Last thread to finish notifies main thread
+			if (s_NumThreadsDone.load() == NUM_THREADS)
 			{
-				int32_t pixelPosX = g_pixelMinX + (currGroupX * PIXEL_QUAD_LENGTH) + pixelGroupIdxX;
-				pixelPosX = glm::clamp(pixelPosX, g_pixelMinX, g_pixelMaxX);
-
-				int32_t pixelPosY = g_pixelMinY + (currGroupY * PIXEL_QUAD_LENGTH) + pixelGroupIdxY;
-				pixelPosY = glm::clamp(pixelPosY, g_pixelMinY, g_pixelMaxY);
-
-				inRasterizer->ShadePixel(pixelPosX, pixelPosY, g_PixelShadeData);
+				ContinueMainCondition.notify_one();
 			}
 
+			std::unique_lock<std::mutex> lock{ StartThreadsMutex };
+			StartThreadsCondition.wait(lock);
 		}
+		else
+		{
+			const int32_t currGroupY = currAvailableQuad / s_NumQuadsPerImageRow;
+			const int32_t currGroupX = currAvailableQuad % s_NumQuadsPerImageRow;
 
+			// Execute horizontally
+			for (int32_t pixelGroupIdxY = 0; pixelGroupIdxY < PIXEL_QUAD_LENGTH; ++pixelGroupIdxY)
+			{
+				for (int32_t pixelGroupIdxX = 0; pixelGroupIdxX < PIXEL_QUAD_LENGTH; ++pixelGroupIdxX)
+				{
+					int32_t pixelPosX = s_pixelMinX + (currGroupX * PIXEL_QUAD_LENGTH) + pixelGroupIdxX;
+					pixelPosX = glm::clamp(pixelPosX, s_pixelMinX, s_pixelMaxX);
 
+					int32_t pixelPosY = s_pixelMinY + (currGroupY * PIXEL_QUAD_LENGTH) + pixelGroupIdxY;
+					pixelPosY = glm::clamp(pixelPosY, s_pixelMinY, s_pixelMaxY);
 
+					inRasterizer->ShadePixel(pixelPosX, pixelPosY, s_PixelShadeData);
+				}
 
+			}
+		}
 	}
 
 }
 
-
-eastl::vector<std::thread> Threads;
 
 void SoftwareRasterizer::Init(const int32_t inImageWidth, const int32_t inImageHeight)
 {
@@ -166,25 +171,38 @@ void SoftwareRasterizer::Init(const int32_t inImageWidth, const int32_t inImageH
 	ClearImageBuffers();
 
 	const int32_t numQuadsY = (inImageHeight / PIXEL_QUAD_LENGTH) + glm::min(PIXEL_QUAD_LENGTH - 1, inImageHeight % PIXEL_QUAD_LENGTH);
-	g_NumQuadsPerImageRow = (inImageWidth / PIXEL_QUAD_LENGTH) + glm::min(PIXEL_QUAD_LENGTH - 1, inImageWidth % PIXEL_QUAD_LENGTH);
-	NumTotalQuads = numQuadsY * g_NumQuadsPerImageRow;
+	s_NumQuadsPerImageRow = (inImageWidth / PIXEL_QUAD_LENGTH) + glm::min(PIXEL_QUAD_LENGTH - 1, inImageWidth % PIXEL_QUAD_LENGTH);
+	s_NumTotalQuadsPerScreen = numQuadsY * s_NumQuadsPerImageRow;
 	//NumTotalQuads = 1;
 
-	for (int32_t quadIdx = 0; quadIdx < NumTotalQuads; ++quadIdx)
+	for (int32_t threadIdx = 0; threadIdx < NUM_THREADS; ++threadIdx)
 	{
-		Threads.push_back(std::thread(ShadingThreadRun, this, quadIdx));
+		std::thread newThread = std::thread(ShadingThreadRun, this);
+
+		eastl::wstring threadName = L"Software Rasterizer Thread ";
+		threadName += eastl::to_wstring(threadIdx);
+
+		SetThreadDescription(newThread.native_handle(), threadName.c_str());
+
+		s_Threads.push_back(std::move(newThread));
 	}
 
-	NumThreadsDone.store(0);
+	s_NumThreadsDone.store(0);
 
 	//Threads.push_back(std::thread(ShadingThreadRun, this, 0));
-
 
 
 }
 
 SoftwareRasterizer::~SoftwareRasterizer()
 {
+	// Shut down threads
+	StartThreadsCondition.notify_all();
+	for (std::thread& t : s_Threads)
+	{
+		t.join();
+	}
+
 	delete IntermediaryImageData;
 	delete FinalImageData;
 }
@@ -458,7 +476,7 @@ void SoftwareRasterizer::PrepareBeforePresent()
 	TransposeImage();
 }
 
-int32_t maxTriangles = 128;
+int32_t maxTriangles = 1;
 bool bDrawTriangleWireframe = false;
 bool bDrawOnlyBackfaceCulled = false;
 bool bUseZBuffer = true;
@@ -541,10 +559,10 @@ void SoftwareRasterizer::DrawChildren(const eastl::vector<TransformObjPtr>& inCh
 			// Draw triangle by triangle
 			for (uint32_t triangleIdx = 0; triangleIdx < numTriangles; ++triangleIdx)
 			{
-				//if (countTriangles >= maxTriangles)
-				//{
-				//	return;
-				//}
+				if (countTriangles >= maxTriangles)
+				{
+					return;
+				}
 
 				const uint32_t idxStart = triangleIdx * 3;
 
@@ -737,61 +755,61 @@ void SoftwareRasterizer::DrawTriangle(const VtxShaderOutput& A, const VtxShaderO
 
 #if USE_MT
 
-	g_PixelShadeData = shadingData;
-	g_pixelMinX = pixelMinX;
-	g_pixelMinY = pixelMinY;
-	g_pixelMaxX = pixelMaxX;
-	g_pixelMaxY = pixelMaxY;
+	s_PixelShadeData = shadingData;
+	s_pixelMinX = pixelMinX;
+	s_pixelMinY = pixelMinY;
+	s_pixelMaxX = pixelMaxX;
+	s_pixelMaxY = pixelMaxY;
 
 	const int32_t quadStartX = (pixelMinX / PIXEL_QUAD_LENGTH);
 	const int32_t quadStartY = (pixelMinY / PIXEL_QUAD_LENGTH);
 	const int32_t quadsEndX = (pixelMaxX / PIXEL_QUAD_LENGTH);
 	const int32_t quadsEndY = (pixelMaxY / PIXEL_QUAD_LENGTH);
-	//const int32_t quadsPerRow = ImageWidth / PixelQuadLength;
 
-	g_groupsStart = quadStartY * g_NumQuadsPerImageRow + quadStartX;
-	g_groupsEnd = quadsEndY * g_NumQuadsPerImageRow + quadsEndX;
+	s_StartQuadIdx = quadStartY * s_NumQuadsPerImageRow + quadStartX;
+	s_EndQuadIdx = quadsEndY * s_NumQuadsPerImageRow + quadsEndX;
+	s_NumTotalQuadsCurrRun = s_EndQuadIdx - s_StartQuadIdx;
 
 	// Cannot wait on it and block main thread.
 	// Have to put rasterizer on separate thread and just trigger and render after which the main thread checks if it is done and updates the image on screen only when it has finished and the new one is ready
 
-	NumThreadsDone.store(0);
+	// Check if all threads are done
+	s_CurrAvailableQuad.store(s_StartQuadIdx);
+
+	s_NumThreadsDone.store(0);
 	StartThreadsCondition.notify_all();
+
+	while (s_NumThreadsDone.load() != NUM_THREADS)
+	{
+
+	}
 
 	//std::unique_lock<std::mutex> lock{ ContinueMainMutex };
 	//ContinueMainCondition.wait(lock);
 
 
 
-	//const int32_t numGroupsY = ((sizeY + 1) / PixelQuadLength) + glm::min(PixelQuadLength - 1, (sizeY + 1) % PixelQuadLength);
-	//const int32_t numGroupsX = ((sizeX + 1)/ PixelQuadLength) + glm::min(PixelQuadLength - 1, (sizeX + 1) % PixelQuadLength);
+	// Quad based but single threaded
+	//const int32_t numGroupsY = ((sizeY + 1) / PIXEL_QUAD_LENGTH) + glm::min(PIXEL_QUAD_LENGTH - 1, (sizeY + 1) % PIXEL_QUAD_LENGTH);
+	//const int32_t numGroupsX = ((sizeX + 1)/ PIXEL_QUAD_LENGTH) + glm::min(PIXEL_QUAD_LENGTH - 1, (sizeX + 1) % PIXEL_QUAD_LENGTH);
 
 	//const int32_t numGroups = numGroupsY * numGroupsX;
 
-	//eastl::vector<uint32_t> m_threadsIter;
-	//m_threadsIter.resize(numGroups);
-
-	//for (int32_t i = 0; i < numGroups; i++)
-	//{
-	//	m_threadsIter[i] = i;
-	//}
-
-
-	// Go through all groups
+	//// Go through all groups
 	//for (int32_t groupIdx = 0; groupIdx < numGroups; ++groupIdx)
 	//{
 	//	const int32_t currGroupY = groupIdx / numGroupsX;
 	//	const int32_t currGroupX = groupIdx % numGroupsX;
 
 	//	// Execute horizontally
-	//	for (int32_t pixelGroupIdxY = 0; pixelGroupIdxY < groupSize; ++pixelGroupIdxY)
+	//	for (int32_t pixelGroupIdxY = 0; pixelGroupIdxY < PIXEL_QUAD_LENGTH; ++pixelGroupIdxY)
 	//	{
-	//		for (int32_t pixelGroupIdxX = 0; pixelGroupIdxX < groupSize; ++pixelGroupIdxX)
+	//		for (int32_t pixelGroupIdxX = 0; pixelGroupIdxX < PIXEL_QUAD_LENGTH; ++pixelGroupIdxX)
 	//		{
-	//			int32_t pixelPosX = pixelMinX + (currGroupX * groupSize) + pixelGroupIdxX;
+	//			int32_t pixelPosX = pixelMinX + (currGroupX * PIXEL_QUAD_LENGTH) + pixelGroupIdxX;
 	//			pixelPosX = glm::clamp(pixelPosX, pixelMinX, pixelMaxX);
 
-	//			int32_t pixelPosY = pixelMinY + (currGroupY * groupSize) + pixelGroupIdxY;
+	//			int32_t pixelPosY = pixelMinY + (currGroupY * PIXEL_QUAD_LENGTH) + pixelGroupIdxY;
 	//			pixelPosY = glm::clamp(pixelPosY, pixelMinY, pixelMaxY);
 
 	//			ShadePixel(pixelPosX, pixelPosY, shadingData);
@@ -801,8 +819,13 @@ void SoftwareRasterizer::DrawTriangle(const VtxShaderOutput& A, const VtxShaderO
 	//}
 
 
+	//eastl::vector<uint32_t> m_threadsIter;
+	//m_threadsIter.resize(numGroups);
 
-
+	//for (int32_t i = 0; i < numGroups; i++)
+	//{
+	//	m_threadsIter[i] = i;
+	//}
 	//std::for_each(std::execution::par, m_threadsIter.begin(), m_threadsIter.end(),
 	//[this, shadingData, groupSize, pixelMinX, pixelMinY, pixelMaxX, pixelMaxY, numGroupsX](uint32_t groupIdx)
 	//{

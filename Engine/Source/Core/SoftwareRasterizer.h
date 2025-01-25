@@ -41,7 +41,7 @@ struct PixelShadeDataPkg
 	bool bCulled = false;
 };
 
-void ShadingThreadRun(class SoftwareRasterizer* inRasterizer, const int32_t inQuadIdx);
+void ShadingThreadRun(class SoftwareRasterizer* inRasterizer);
 
 class SoftwareRasterizer
 {
@@ -72,7 +72,7 @@ private:
 
 	void ShadePixel(const int32_t inX, const int32_t inY, const PixelShadeDataPkg& inPixelData);
 
-	friend void ShadingThreadRun(class SoftwareRasterizer* inRasterizer, const int32_t inQuadIdx);
+	friend void ShadingThreadRun(class SoftwareRasterizer* inRasterizer);
 
 private:
 	uint32_t* FinalImageData = nullptr;

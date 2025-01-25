@@ -7,6 +7,12 @@ TransformObject::TransformObject(const eastl::string& inName)
 
 TransformObject::~TransformObject() = default;
 
+void TransformObject::AddChild(TransformObjPtr inTransfObj)
+{
+	TransformObjPtr thisShared = shared_from_this();
+	inTransfObj->SetParent(thisShared);
+}
+
 void TransformObject::SetParent(TransformObjPtr& inParent)
 {
 	Parent = inParent;
