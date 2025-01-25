@@ -101,8 +101,8 @@ const float CAMERA_FOV = 45.f;
 const float CAMERA_NEAR = 0.1f;
 const float CAMERA_FAR = 10000.f;
 
-const int32_t SoftRasterizerImgWidth = 6;
-const int32_t SoftRasterizerImgHeight = 5;
+const int32_t SoftRasterizerImgWidth = 600;
+const int32_t SoftRasterizerImgHeight = 480;
 SoftwareRasterizer Rasterizer;
 eastl::shared_ptr<D3D12Texture2DWritable> MainImage;
 eastl::shared_ptr<Model3D> MainModel;
